@@ -36,8 +36,8 @@ app.use(helmet({
 // CORS configuration
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? process.env.FRONTEND_URL 
-    : ['http://localhost:3000', 'http://localhost:5173'], // Vite default port
+    ? [process.env.FRONTEND_URL, 'https://guardian-nexus.vercel.app']
+    : ['http://localhost:3000', 'http://localhost:5173', 'https://guardian-nexus.vercel.app'], // Support both local dev and deployed frontend
   credentials: true,
 }));
 
@@ -114,6 +114,8 @@ app.listen(PORT, async () => {
   console.log(`📋 Health check: http://localhost:${PORT}/health`);
   console.log(`🔗 API base: http://localhost:${PORT}/api`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🎯 Frontend URL: ${process.env.FRONTEND_URL || 'Not configured'}`);
+  console.log(`🌐 Vercel Deployment: https://guardian-nexus.vercel.app/`);
   
   // Test external connections
   console.log('\n🔍 Testing external connections...');
