@@ -91,9 +91,9 @@
 - [x] Examples: `/api/bungie/profile`, `/api/bungie/inventory`, `/api/bungie/item/:id`.
 
 #### 8.3. Bungie OAuth Authentication Flow
-- [ ] Implement the full OAuth 2.0 process with Bungie for user login.
-- [ ] Handle redirects, exchange authorization codes for access tokens, and refresh tokens.
-- [ ] Securely store user tokens (likely in Supabase).
+- [x] Implement the full OAuth 2.0 process with Bungie for user login.
+- [x] Handle redirects, exchange authorization codes for access tokens, and refresh tokens.
+- [x] Securely store user tokens (likely in Supabase).
 
 #### 8.4. Supabase Integration
 - [ ] Set up your Node.js backend to communicate with your Supabase database and services.
