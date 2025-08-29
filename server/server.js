@@ -9,6 +9,8 @@ import { dirname, join } from 'path';
 import bungieRoutes from './routes/bungie.js';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/user.js';
+import communityRoutes from './routes/community.js';
+import testRoutes from './routes/test.js';
 
 // Import configuration and services
 import { testSupabaseConnection, runMigrations } from './config/supabase.js';
@@ -68,7 +70,9 @@ app.get('/api', (req, res) => {
       health: '/health',
       bungie: '/api/bungie/*',
       auth: '/api/auth/*',
-      user: '/api/user/*'
+      user: '/api/user/*',
+      community: '/api/community/*',
+      test: '/api/test/*'
     }
   });
 });
@@ -77,6 +81,8 @@ app.get('/api', (req, res) => {
 app.use('/api/bungie', rateLimiter(60000, 50), bungieRoutes); // 50 requests per minute for Bungie API
 app.use('/api/auth', rateLimiter(60000, 20), authRoutes); // 20 requests per minute for auth
 app.use('/api/user', rateLimiter(60000, 30), userRoutes); // 30 requests per minute for user endpoints
+app.use('/api/community', rateLimiter(60000, 40), communityRoutes); // 40 requests per minute for community endpoints
+app.use('/api/test', rateLimiter(60000, 10), testRoutes); // 10 requests per minute for test endpoints
 
 // 404 handler
 app.use('*', (req, res) => {

@@ -163,6 +163,334 @@ export const profileHelpers = {
   }
 };
 
+// Destiny Items database operations
+export const destinyItemHelpers = {
+  async cacheItem(itemData) {
+    const existingItem = await dbHelpers.findByField('destiny_items', 'item_hash', itemData.item_hash);
+    
+    if (existingItem && existingItem.length > 0) {
+      return dbHelpers.update('destiny_items', existingItem[0].id, {
+        ...itemData,
+        updated_at: new Date().toISOString()
+      });
+    } else {
+      return dbHelpers.create('destiny_items', itemData);
+    }
+  },
+
+  async getItemByHash(itemHash) {
+    const items = await dbHelpers.findByField('destiny_items', 'item_hash', itemHash);
+    return items && items.length > 0 ? items[0] : null;
+  },
+
+  async searchItems(filters = {}) {
+    let query = supabase.from('destiny_items').select('*');
+    
+    if (filters.item_type) query = query.eq('item_type', filters.item_type);
+    if (filters.tier_type) query = query.eq('tier_type', filters.tier_type);
+    if (filters.class_type !== undefined) query = query.eq('class_type', filters.class_type);
+    if (filters.search) query = query.ilike('item_name', `%${filters.search}%`);
+    
+    query = query.order('item_name', { ascending: true });
+    
+    const { data, error } = await query;
+    if (error) throw error;
+    return data;
+  },
+
+  async getPopularItems(limit = 50) {
+    // Get items that are frequently used in loadouts
+    const { data, error } = await supabase
+      .from('destiny_items')
+      .select('*')
+      .order('tier_type', { ascending: false })
+      .order('item_name', { ascending: true })
+      .limit(limit);
+    
+    if (error) throw error;
+    return data;
+  }
+};
+
+// User Loadouts database operations
+export const loadoutHelpers = {
+  async createLoadout(profileId, loadoutData) {
+    return dbHelpers.create('user_loadouts', {
+      profile_id: profileId,
+      ...loadoutData
+    });
+  },
+
+  async getUserLoadouts(profileId, includePrivate = true) {
+    let query = supabase
+      .from('user_loadouts')
+      .select('*')
+      .eq('profile_id', profileId)
+      .order('created_at', { ascending: false });
+    
+    if (!includePrivate) {
+      query = query.eq('is_public', true);
+    }
+    
+    const { data, error } = await query;
+    if (error) throw error;
+    return data;
+  },
+
+  async getPublicLoadouts(filters = {}, page = 1, limit = 20) {
+    let query = supabase
+      .from('user_loadouts')
+      .select(`
+        *,
+        profile:profiles(display_name, bungie_id)
+      `)
+      .eq('is_public', true);
+    
+    if (filters.character_class !== undefined) {
+      query = query.eq('character_class', filters.character_class);
+    }
+    if (filters.tags && filters.tags.length > 0) {
+      query = query.contains('tags', filters.tags);
+    }
+    
+    query = query
+      .order('likes_count', { ascending: false })
+      .order('created_at', { ascending: false })
+      .range((page - 1) * limit, page * limit - 1);
+    
+    const { data, error } = await query;
+    if (error) throw error;
+    return data;
+  },
+
+  async likeLoadout(loadoutId) {
+    const { data, error } = await supabase.rpc('increment_loadout_likes', {
+      loadout_id: loadoutId
+    });
+    
+    if (error) throw error;
+    return data;
+  },
+
+  async updateLoadout(loadoutId, updates) {
+    return dbHelpers.update('user_loadouts', loadoutId, updates);
+  },
+
+  async deleteLoadout(loadoutId) {
+    return dbHelpers.delete('user_loadouts', loadoutId);
+  }
+};
+
+// Community Posts database operations
+export const communityHelpers = {
+  async createPost(profileId, postData) {
+    return dbHelpers.create('community_posts', {
+      profile_id: profileId,
+      ...postData
+    });
+  },
+
+  async getPosts(filters = {}, page = 1, limit = 20) {
+    let query = supabase
+      .from('community_posts')
+      .select(`
+        *,
+        profile:profiles(display_name, bungie_id),
+        loadout:user_loadouts(*)
+      `);
+    
+    if (filters.post_type) query = query.eq('post_type', filters.post_type);
+    if (filters.featured) query = query.eq('is_featured', true);
+    if (filters.tags && filters.tags.length > 0) {
+      query = query.contains('tags', filters.tags);
+    }
+    
+    query = query
+      .eq('is_moderated', false)
+      .order('upvotes', { ascending: false })
+      .order('created_at', { ascending: false })
+      .range((page - 1) * limit, page * limit - 1);
+    
+    const { data, error } = await query;
+    if (error) throw error;
+    return data;
+  },
+
+  async getPostById(postId) {
+    const { data, error } = await supabase
+      .from('community_posts')
+      .select(`
+        *,
+        profile:profiles(display_name, bungie_id),
+        loadout:user_loadouts(*)
+      `)
+      .eq('id', postId)
+      .single();
+    
+    if (error) throw error;
+    return data;
+  },
+
+  async upvotePost(postId) {
+    const { data, error } = await supabase.rpc('increment_post_upvotes', {
+      post_id: postId
+    });
+    
+    if (error) throw error;
+    return data;
+  },
+
+  async incrementViews(postId) {
+    const { data, error } = await supabase.rpc('increment_post_views', {
+      post_id: postId
+    });
+    
+    if (error) throw error;
+    return data;
+  },
+
+  async updatePost(postId, updates) {
+    return dbHelpers.update('community_posts', postId, updates);
+  },
+
+  async deletePost(postId) {
+    return dbHelpers.delete('community_posts', postId);
+  }
+};
+
+// Comments database operations
+export const commentHelpers = {
+  async createComment(profileId, postId, content, parentCommentId = null) {
+    return dbHelpers.create('comments', {
+      profile_id: profileId,
+      post_id: postId,
+      content,
+      parent_comment_id: parentCommentId
+    });
+  },
+
+  async getPostComments(postId) {
+    const { data, error } = await supabase
+      .from('comments')
+      .select(`
+        *,
+        profile:profiles(display_name, bungie_id)
+      `)
+      .eq('post_id', postId)
+      .eq('is_moderated', false)
+      .order('created_at', { ascending: true });
+    
+    if (error) throw error;
+    return data;
+  },
+
+  async upvoteComment(commentId) {
+    const { data, error } = await supabase.rpc('increment_comment_upvotes', {
+      comment_id: commentId
+    });
+    
+    if (error) throw error;
+    return data;
+  },
+
+  async updateComment(commentId, updates) {
+    return dbHelpers.update('comments', commentId, updates);
+  },
+
+  async deleteComment(commentId) {
+    return dbHelpers.delete('comments', commentId);
+  }
+};
+
+// User Favorites database operations
+export const favoriteHelpers = {
+  async addFavorite(profileId, favoriteType, favoriteId) {
+    return dbHelpers.create('user_favorites', {
+      profile_id: profileId,
+      favorite_type: favoriteType,
+      favorite_id: favoriteId
+    });
+  },
+
+  async removeFavorite(profileId, favoriteType, favoriteId) {
+    const { error } = await supabase
+      .from('user_favorites')
+      .delete()
+      .eq('profile_id', profileId)
+      .eq('favorite_type', favoriteType)
+      .eq('favorite_id', favoriteId);
+    
+    if (error) throw error;
+    return true;
+  },
+
+  async getUserFavorites(profileId, favoriteType = null) {
+    let query = supabase
+      .from('user_favorites')
+      .select('*')
+      .eq('profile_id', profileId)
+      .order('created_at', { ascending: false });
+    
+    if (favoriteType) {
+      query = query.eq('favorite_type', favoriteType);
+    }
+    
+    const { data, error } = await query;
+    if (error) throw error;
+    return data;
+  },
+
+  async isFavorite(profileId, favoriteType, favoriteId) {
+    const { data, error } = await supabase
+      .from('user_favorites')
+      .select('id')
+      .eq('profile_id', profileId)
+      .eq('favorite_type', favoriteType)
+      .eq('favorite_id', favoriteId)
+      .single();
+    
+    return !error && data;
+  }
+};
+
+// User Activity tracking
+export const activityHelpers = {
+  async logActivity(profileId, activityType, activityData = {}) {
+    return dbHelpers.create('user_activity', {
+      profile_id: profileId,
+      activity_type: activityType,
+      activity_data: activityData
+    });
+  },
+
+  async getUserActivity(profileId, limit = 50) {
+    return dbHelpers.paginate('user_activity', {
+      page: 1,
+      limit,
+      orderBy: 'created_at',
+      ascending: false,
+      filters: { profile_id: profileId }
+    });
+  },
+
+  async getActivityStats(profileId) {
+    const { data, error } = await supabase
+      .from('user_activity')
+      .select('activity_type')
+      .eq('profile_id', profileId);
+    
+    if (error) throw error;
+    
+    // Count activities by type
+    const stats = data.reduce((acc, activity) => {
+      acc[activity.activity_type] = (acc[activity.activity_type] || 0) + 1;
+      return acc;
+    }, {});
+    
+    return stats;
+  }
+};
+
 // Connection health check and diagnostics
 export const testSupabaseConnection = async () => {
   try {

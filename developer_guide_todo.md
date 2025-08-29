@@ -101,10 +101,10 @@
 - [x] Configure with your Supabase Project URL and the `service_role` key.
 
 #### 8.5. Database Interaction (Supabase)
-- [ ] Implement logic to store and retrieve data from Supabase.
-- [ ] Model Destiny 2 Game Data (Items, Perks, Stats) in Supabase tables.
-- [ ] Manage User Data and Profiles (linking Bungie ID to Supabase user).
-- [ ] Manage Community Content (Posts, Builds, Comments).
+- [x] Implement logic to store and retrieve data from Supabase.
+- [x] Model Destiny 2 Game Data (Items, Perks, Stats) in Supabase tables.
+- [x] Manage User Data and Profiles (linking Bungie ID to Supabase user).
+- [x] Manage Community Content (Posts, Builds, Comments).
 
 #### 8.6. Business Logic Implementation
 - [ ] Implement server-side logic for features like:
