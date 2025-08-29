@@ -86,9 +86,9 @@
 - [x] Set up basic routing and middleware.
 
 #### 8.2. Bungie API Proxy Endpoints
-- [ ] Implement API endpoints in your backend to fetch data from the Bungie.net API.
-- [ ] Ensure the proxy hides your API key and handles rate limiting.
-- [ ] Examples: `/api/bungie/profile`, `/api/bungie/inventory`, `/api/bungie/item/:id`.
+- [x] Implement API endpoints in your backend to fetch data from the Bungie.net API.
+- [x] Ensure the proxy hides your API key and handles rate limiting.
+- [x] Examples: `/api/bungie/profile`, `/api/bungie/inventory`, `/api/bungie/item/:id`.
 
 #### 8.3. Bungie OAuth Authentication Flow
 - [ ] Implement the full OAuth 2.0 process with Bungie for user login.

@@ -13,6 +13,7 @@ import userRoutes from './routes/user.js';
 // Import configuration and services
 import { testSupabaseConnection } from './config/supabase.js';
 import { testBungieConnection } from './config/bungie.js';
+import { handleBungieErrors, rateLimiter } from './middleware/index.js';
 
 // Load environment variables
 dotenv.config();
@@ -72,10 +73,10 @@ app.get('/api', (req, res) => {
   });
 });
 
-// Route mounting
-app.use('/api/bungie', bungieRoutes);
-app.use('/api/auth', authRoutes);
-app.use('/api/user', userRoutes);
+// Route mounting with rate limiting
+app.use('/api/bungie', rateLimiter(60000, 50), bungieRoutes); // 50 requests per minute for Bungie API
+app.use('/api/auth', rateLimiter(60000, 20), authRoutes); // 20 requests per minute for auth
+app.use('/api/user', rateLimiter(60000, 30), userRoutes); // 30 requests per minute for user endpoints
 
 // 404 handler
 app.use('*', (req, res) => {
@@ -85,6 +86,9 @@ app.use('*', (req, res) => {
     method: req.method
   });
 });
+
+// Bungie API error handler (before global error handler)
+app.use(handleBungieErrors);
 
 // Global error handler
 app.use((err, req, res, next) => {
