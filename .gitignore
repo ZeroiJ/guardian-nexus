@@ -18,6 +18,9 @@ server/.env.development.local
 server/.env.test.local
 server/.env.production.local
 
+# Documentation files (Security)
+GEMINI.md
+
 # Logs
 logs
 *.log
