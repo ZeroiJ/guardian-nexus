@@ -1,6 +1,6 @@
 import express from 'express';
 import { BUNGIE_CONFIG, bungieAPI } from '../config/bungie.js';
-import { supabase } from '../config/supabase.js';
+import { supabase, profileHelpers } from '../config/supabase.js';
 import axios from 'axios';
 
 const router = express.Router();
@@ -212,35 +212,7 @@ async function createOrUpdateUser(profile, tokens) {
     last_login: new Date().toISOString()
   };
   
-  // Try to find existing user
-  const { data: existingUser } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('bungie_id', profile.bungie_id)
-    .single();
-  
-  if (existingUser) {
-    // Update existing user
-    const { data, error } = await supabase
-      .from('profiles')
-      .update(userData)
-      .eq('bungie_id', profile.bungie_id)
-      .select()
-      .single();
-    
-    if (error) throw error;
-    return data;
-  } else {
-    // Create new user
-    const { data, error } = await supabase
-      .from('profiles')
-      .insert(userData)
-      .select()
-      .single();
-    
-    if (error) throw error;
-    return data;
-  }
+  return await profileHelpers.createOrUpdateProfile(userData);
 }
 
 // Helper function to refresh access token
@@ -265,16 +237,7 @@ async function refreshAccessToken(refreshToken) {
 
 // Helper function to clear user tokens
 async function clearUserTokens(userId) {
-  const { error } = await supabase
-    .from('profiles')
-    .update({
-      access_token: null,
-      refresh_token: null,
-      token_expires_at: null
-    })
-    .eq('id', userId);
-  
-  if (error) throw error;
+  return await profileHelpers.clearTokens(userId);
 }
 
 export default router;

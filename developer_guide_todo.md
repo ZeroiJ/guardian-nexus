@@ -96,9 +96,9 @@
 - [x] Securely store user tokens (likely in Supabase).
 
 #### 8.4. Supabase Integration
-- [ ] Set up your Node.js backend to communicate with your Supabase database and services.
-- [ ] Use the Supabase client library for Node.js.
-- [ ] Configure with your Supabase Project URL and the `service_role` key.
+- [x] Set up your Node.js backend to communicate with your Supabase database and services.
+- [x] Use the Supabase client library for Node.js.
+- [x] Configure with your Supabase Project URL and the `service_role` key.
 
 #### 8.5. Database Interaction (Supabase)
 - [ ] Implement logic to store and retrieve data from Supabase.

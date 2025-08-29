@@ -11,7 +11,7 @@ import authRoutes from './routes/auth.js';
 import userRoutes from './routes/user.js';
 
 // Import configuration and services
-import { testSupabaseConnection } from './config/supabase.js';
+import { testSupabaseConnection, runMigrations } from './config/supabase.js';
 import { testBungieConnection } from './config/bungie.js';
 import { handleBungieErrors, rateLimiter } from './middleware/index.js';
 
@@ -111,9 +111,20 @@ app.listen(PORT, async () => {
   
   // Test external connections
   console.log('\n🔍 Testing external connections...');
-  await testSupabaseConnection();
-  await testBungieConnection();
+  const supabaseOk = await testSupabaseConnection();
+  const bungieOk = await testBungieConnection();
+  
+  // Check database migrations if Supabase is connected
+  if (supabaseOk) {
+    await runMigrations();
+  }
+  
   console.log('\n✨ Server initialization complete!');
+  
+  // Summary
+  console.log('\n📊 Connection Status:');
+  console.log(`   Supabase: ${supabaseOk ? '✅ Connected' : '❌ Failed'}`);
+  console.log(`   Bungie API: ${bungieOk ? '✅ Connected' : '❌ Failed'}`);
 });
 
 export default app;
