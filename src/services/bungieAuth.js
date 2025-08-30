@@ -1,23 +1,18 @@
 import { supabase } from '../lib/supabase';
 import axios from 'axios';
 
-// Bungie API Configuration
-const BUNGIE_CONFIG = {
-  apiKey: import.meta.env?.VITE_BUNGIE_API_KEY,
-  clientId: import.meta.env?.VITE_BUNGIE_CLIENT_ID,
-  clientSecret: import.meta.env?.VITE_BUNGIE_CLIENT_SECRET,
-  baseURL: 'https://www.bungie.net/Platform',
-  authURL: 'https://www.bungie.net/en/OAuth/Authorize',
-  tokenURL: 'https://www.bungie.net/platform/app/oauth/token/',
+// API Configuration
+const API_CONFIG = {
+  backendURL: import.meta.env?.VITE_API_BASE_URL || 'http://localhost:3001',
+  bungieAuthURL: 'https://www.bungie.net/en/OAuth/Authorize',
   redirectURI: `${window?.location?.origin}/auth/bungie/callback`,
   scopes: 'ReadBasicUserProfile ReadCharacterData ReadInventoryData ReadClanData ReadRecords'
 };
 
-// Axios instance with default headers
-const bungieAPI = axios?.create({
-  baseURL: BUNGIE_CONFIG?.baseURL,
+// Axios instance for backend API calls
+const backendAPI = axios?.create({
+  baseURL: API_CONFIG?.backendURL,
   headers: {
-    'X-API-Key': BUNGIE_CONFIG?.apiKey,
     'Content-Type': 'application/json',
   },
 });
@@ -30,20 +25,20 @@ export class BungieAuthService {
   /**
    * Initiates the Bungie OAuth flow by redirecting to Bungie's authorization page
    */
-  static initiateOAuth() {
-    const state = crypto.randomUUID();
-    localStorage.setItem('bungie_oauth_state', state);
-
-    const authParams = new URLSearchParams({
-      client_id: BUNGIE_CONFIG.clientId,
-      response_type: 'code',
-      redirect_uri: BUNGIE_CONFIG.redirectURI,
-      scope: BUNGIE_CONFIG.scopes,
-      state: state
-    });
-
-    const authURL = `${BUNGIE_CONFIG?.authURL}?${authParams?.toString()}`;
-    window.location.href = authURL;
+  static async initiateOAuth() {
+    try {
+      // Get OAuth URL from backend
+      const response = await backendAPI?.get('/api/auth/bungie');
+      
+      if (response?.data?.authURL) {
+        window.location.href = response?.data?.authURL;
+      } else {
+        throw new Error('Failed to get authorization URL from backend');
+      }
+    } catch (error) {
+      console.error('Failed to initiate OAuth:', error);
+      throw new Error(`Authentication initiation failed: ${error?.message}`);
+    }
   }
 
   /**
@@ -54,117 +49,24 @@ export class BungieAuthService {
    */
   static async handleOAuthCallback(code, state) {
     try {
-      // Verify state parameter
-      const storedState = localStorage.getItem('bungie_oauth_state');
-      if (state !== storedState) {
-        throw new Error('Invalid state parameter - possible CSRF attack');
-      }
-      localStorage.removeItem('bungie_oauth_state');
-
-      // Exchange code for tokens
-      const tokenResponse = await this.exchangeCodeForTokens(code);
-      const { access_token, refresh_token, expires_in } = tokenResponse;
-
-      // Get user profile data
-      const userProfile = await this.getCurrentUserProfile(access_token);
-      
-      // Get current Supabase user
-      const { data: { user: supabaseUser } } = await supabase?.auth?.getUser();
-      if (!supabaseUser) {
-        throw new Error('User must be logged into Supabase first');
-      }
-
-      // Store tokens and profile data in Supabase
-      await this.storeBungieTokens(supabaseUser?.id, {
-        access_token,
-        refresh_token,
-        expires_in,
-        bungie_user_id: userProfile?.membershipId,
-        display_name: userProfile?.displayName,
-        profile_data: userProfile
+      // Send callback to backend for processing
+      const response = await backendAPI?.post('/api/auth/bungie/callback', {
+        code,
+        state
       });
 
-      return {
-        success: true,
-        userProfile,
-        tokens: { access_token, refresh_token, expires_in }
-      };
-
+      if (response?.data?.success) {
+        return {
+          success: true,
+          userProfile: response?.data?.userProfile,
+          connection: response?.data?.connection
+        };
+      } else {
+        throw new Error(response?.data?.error || 'Authentication failed');
+      }
     } catch (error) {
       console.error('Bungie OAuth callback error:', error);
-      throw new Error(`Authentication failed: ${error?.message}`);
-    }
-  }
-
-  /**
-   * Exchanges authorization code for access/refresh tokens
-   * @private
-   */
-  static async exchangeCodeForTokens(code) {
-    const tokenData = new URLSearchParams({
-      grant_type: 'authorization_code',
-      code: code,
-      redirect_uri: BUNGIE_CONFIG.redirectURI,
-      client_id: BUNGIE_CONFIG.clientId,
-      client_secret: BUNGIE_CONFIG.clientSecret
-    });
-
-    const response = await fetch(BUNGIE_CONFIG?.tokenURL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'X-API-Key': BUNGIE_CONFIG?.apiKey,
-      },
-      body: tokenData
-    });
-
-    if (!response?.ok) {
-      const errorData = await response?.json();
-      throw new Error(`Token exchange failed: ${errorData?.error_description || response?.statusText}`);
-    }
-
-    return await response?.json();
-  }
-
-  /**
-   * Gets current user profile from Bungie API
-   * @private
-   */
-  static async getCurrentUserProfile(accessToken) {
-    const response = await bungieAPI?.get('/User/GetCurrentBungieNetUser/', {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`
-      }
-    });
-
-    if (response?.data?.ErrorCode !== 1) {
-      throw new Error(`Failed to get user profile: ${response?.data?.Message}`);
-    }
-
-    return response?.data?.Response;
-  }
-
-  /**
-   * Stores Bungie tokens and profile data in Supabase
-   * @private
-   */
-  static async storeBungieTokens(userId, tokenData) {
-    const expiresAt = new Date(Date.now() + (tokenData?.expires_in * 1000));
-
-    const { error } = await supabase?.from('bungie_connections')?.upsert({
-        user_id: userId,
-        bungie_user_id: tokenData?.bungie_user_id,
-        access_token: tokenData?.access_token,
-        refresh_token: tokenData?.refresh_token,
-        expires_at: expiresAt?.toISOString(),
-        display_name: tokenData?.display_name,
-        profile_data: tokenData?.profile_data,
-        is_active: true,
-        updated_at: new Date()?.toISOString()
-      });
-
-    if (error) {
-      throw new Error(`Failed to store tokens: ${error?.message}`);
+      throw new Error(`Authentication failed: ${error?.response?.data?.error || error?.message}`);
     }
   }
 
@@ -173,17 +75,13 @@ export class BungieAuthService {
    * @returns {Promise<Object|null>} Bungie connection data or null
    */
   static async getBungieConnection() {
-    const { data: { user } } = await supabase?.auth?.getUser();
-    if (!user) return null;
-
-    const { data, error } = await supabase?.from('bungie_connections')?.select('*')?.eq('user_id', user?.id)?.eq('is_active', true)?.single();
-
-    if (error && error?.code !== 'PGRST116') {
+    try {
+      const response = await backendAPI?.get('/api/user/bungie-connection');
+      return response?.data?.connection || null;
+    } catch (error) {
       console.error('Error fetching Bungie connection:', error);
       return null;
     }
-
-    return data;
   }
 
   /**
@@ -192,89 +90,22 @@ export class BungieAuthService {
    */
   static async isConnected() {
     const connection = await this.getBungieConnection();
-    if (!connection) return false;
-
-    const now = new Date();
-    const expiresAt = new Date(connection?.expires_at);
-    
-    return now < expiresAt;
+    return !!connection && connection?.is_active;
   }
 
   /**
-   * Refreshes access token using refresh token
-   * @returns {Promise<boolean>} True if refresh successful
+   * Makes authenticated API request through backend proxy
+   * @param {string} endpoint - Bungie API endpoint
+   * @returns {Promise<Object>} API response
    */
-  static async refreshAccessToken() {
+  static async apiRequest(endpoint) {
     try {
-      const connection = await this.getBungieConnection();
-      if (!connection?.refresh_token) {
-        throw new Error('No refresh token available');
-      }
-
-      const tokenData = new URLSearchParams({
-        grant_type: 'refresh_token',
-        refresh_token: connection?.refresh_token,
-        client_id: BUNGIE_CONFIG.clientId,
-        client_secret: BUNGIE_CONFIG.clientSecret
-      });
-
-      const response = await fetch(BUNGIE_CONFIG?.tokenURL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'X-API-Key': BUNGIE_CONFIG?.apiKey,
-        },
-        body: tokenData
-      });
-
-      if (!response?.ok) {
-        throw new Error('Token refresh failed');
-      }
-
-      const newTokens = await response?.json();
-      const expiresAt = new Date(Date.now() + (newTokens?.expires_in * 1000));
-
-      // Update tokens in database
-      const { error } = await supabase?.from('bungie_connections')?.update({
-          access_token: newTokens?.access_token,
-          refresh_token: newTokens?.refresh_token || connection?.refresh_token,
-          expires_at: expiresAt?.toISOString(),
-          updated_at: new Date()?.toISOString()
-        })?.eq('id', connection?.id);
-
-      if (error) {
-        throw new Error(`Failed to update tokens: ${error?.message}`);
-      }
-
-      return true;
+      const response = await backendAPI?.get(`/api/bungie${endpoint}`);
+      return response?.data;
     } catch (error) {
-      console.error('Token refresh error:', error);
-      return false;
+      console.error('Bungie API request failed:', error);
+      throw new Error(`API request failed: ${error?.response?.data?.error || error?.message}`);
     }
-  }
-
-  /**
-   * Gets valid access token, refreshing if necessary
-   * @returns {Promise<string|null>} Valid access token or null
-   */
-  static async getValidAccessToken() {
-    const connection = await this.getBungieConnection();
-    if (!connection) return null;
-
-    const now = new Date();
-    const expiresAt = new Date(connection?.expires_at);
-
-    // Token expires in less than 5 minutes, refresh it
-    if (expiresAt?.getTime() - now?.getTime() < 5 * 60 * 1000) {
-      const refreshed = await this.refreshAccessToken();
-      if (!refreshed) return null;
-      
-      // Get updated connection
-      const updatedConnection = await this.getBungieConnection();
-      return updatedConnection?.access_token;
-    }
-
-    return connection?.access_token;
   }
 
   /**
@@ -283,16 +114,8 @@ export class BungieAuthService {
    */
   static async disconnect() {
     try {
-      const { data: { user } } = await supabase?.auth?.getUser();
-      if (!user) return false;
-
-      const { error } = await supabase?.from('bungie_connections')?.update({ is_active: false })?.eq('user_id', user?.id);
-
-      if (error) {
-        throw new Error(`Failed to disconnect: ${error?.message}`);
-      }
-
-      return true;
+      const response = await backendAPI?.post('/api/user/disconnect-bungie');
+      return response?.data?.success || false;
     } catch (error) {
       console.error('Disconnect error:', error);
       return false;
@@ -300,55 +123,19 @@ export class BungieAuthService {
   }
 
   /**
-   * Makes authenticated request to Bungie API
-   * @param {string} endpoint - API endpoint
-   * @param {Object} options - Request options
-   * @returns {Promise<Object>} API response data
-   */
-  static async apiRequest(endpoint, options = {}) {
-    const accessToken = await this.getValidAccessToken();
-    if (!accessToken) {
-      throw new Error('No valid access token available');
-    }
-
-    const response = await bungieAPI?.request({
-      url: endpoint,
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        ...options?.headers
-      },
-      ...options
-    });
-
-    if (response?.data?.ErrorCode !== 1) {
-      throw new Error(`Bungie API error: ${response?.data?.Message}`);
-    }
-
-    return response?.data?.Response;
-  }
-
-  /**
-   * Gets user's Destiny memberships
+   * Gets user's Destiny memberships through backend
    * @returns {Promise<Array>} Array of membership data
    */
   static async getDestinyMemberships() {
-    const connection = await this.getBungieConnection();
-    if (!connection?.bungie_user_id) {
-      throw new Error('No Bungie connection found');
+    try {
+      const response = await backendAPI?.get('/api/bungie/memberships');
+      return response?.data;
+    } catch (error) {
+      console.error('Failed to get memberships:', error);
+      throw new Error(`Failed to get memberships: ${error?.response?.data?.error || error?.message}`);
     }
-
-    return await this.apiRequest(`/Destiny2/${connection?.bungie_user_id}/GetMembershipsById/254/`);
-  }
-
-  /**
-   * Gets characters for a specific membership
-   * @param {number} membershipType - Platform type (1=Xbox, 2=PSN, 3=Steam, etc.)
-   * @param {string} membershipId - Platform membership ID
-   * @returns {Promise<Object>} Characters data
-   */
-  static async getCharacters(membershipType, membershipId) {
-    return await this.apiRequest(`/Destiny2/${membershipType}/Profile/${membershipId}/?components=100,200`);
   }
 }
 
+export { BungieAuthService };
 export default BungieAuthService;

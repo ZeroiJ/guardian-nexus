@@ -35,9 +35,12 @@
 - [ ] Manage Business Logic for Builds and Community Features.
 
 ### 6. Deployment and Scaling
-- [ ] Choose and set up a Cloud Platform (GCP recommended).
-- [ ] Prepare application for deployment (e.g., `app.yaml`, `package.json` for App Engine).
-- [ ] Configure App Engine and Cloud Storage.
+- [x] Choose and set up a Cloud Platform (Render - Singapore region for India optimization).
+- [x] Prepare application for deployment (render.yaml, package.json configured).
+- [x] Deploy backend to Render (https://guardian-nexus.onrender.com).
+- [x] Deploy frontend to Vercel (https://guardian-nexus.vercel.app).
+- [x] Configure CORS and environment variables for production.
+- [x] Update Bungie OAuth settings for deployed backend.
 - [ ] Set up MongoDB on a service like MongoDB Atlas (if using MongoDB).
 - [ ] Implement strategies for Caching API Responses.
 - [ ] Implement strategies for Handling High Traffic and User Load.
@@ -121,4 +124,7 @@
 - [ ] Write unit and integration tests for backend logic and API endpoints.
 
 #### 8.9. Deployment Preparation
-- [ ] Prepare the backend for deployment (e.g., `Dockerfile` if containerizing, `app.yaml` for App Engine).
+- [x] Prepare the backend for deployment (render.yaml configured).
+- [x] Deploy to Render with Singapore region optimization.
+- [x] Configure production environment variables.
+- [x] Test deployed endpoints and functionality.
