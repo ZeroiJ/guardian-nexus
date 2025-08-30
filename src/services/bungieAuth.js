@@ -137,5 +137,4 @@ export class BungieAuthService {
   }
 }
 
-export { BungieAuthService };
 export default BungieAuthService;
