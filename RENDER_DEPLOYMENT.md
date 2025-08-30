@@ -26,7 +26,7 @@ Fill in these settings:
 
 **Basic Settings:**
 - **Name**: `guardian-nexus-backend`
-- **Region**: `Oregon (US West)` (free tier region)
+- **Region**: `Singapore` (optimized for India - 3-4x faster than Oregon!)
 - **Branch**: `main`
 - **Root Directory**: `server` ⚠️ **IMPORTANT**
 - **Runtime**: `Node`

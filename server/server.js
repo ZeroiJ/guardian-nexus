@@ -61,6 +61,28 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Root endpoint for basic info
+app.get('/', (req, res) => {
+  res.json({
+    message: '🌟 Guardian Nexus Backend API',
+    status: 'Online',
+    version: '1.0.0',
+    description: 'Destiny 2 Companion Website Backend',
+    endpoints: {
+      health: '/health',
+      api_info: '/api',
+      bungie_api: '/api/bungie/*',
+      authentication: '/api/auth/*',
+      user_management: '/api/user/*',
+      community: '/api/community/*',
+      testing: '/api/test/*'
+    },
+    documentation: 'Visit /api for detailed endpoint information',
+    deployed_on: 'Render (Singapore Region - Optimized for India)',
+    frontend: 'https://guardian-nexus.vercel.app/'
+  });
+});
+
 // API routes
 app.get('/api', (req, res) => {
   res.json({
