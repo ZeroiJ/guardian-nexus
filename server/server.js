@@ -26,7 +26,7 @@ const __dirname = dirname(__filename);
 
 // Create Express app
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 10000; // Render uses port 10000 by default
 
 // Security middleware
 app.use(helmet({

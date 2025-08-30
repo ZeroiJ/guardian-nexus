@@ -1,0 +1,32 @@
+# Render.com deployment configuration for Guardian Nexus Backend
+services:
+  - type: web
+    name: guardian-nexus-backend
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: FRONTEND_URL
+        value: https://guardian-nexus.vercel.app
+      - key: BUNGIE_API_KEY
+        sync: false
+      - key: BUNGIE_CLIENT_ID
+        sync: false  
+      - key: BUNGIE_CLIENT_SECRET
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+    regions:
+      - oregon # Free tier region
