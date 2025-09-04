@@ -1,0 +1,83 @@
+{
+  "version": 2,
+  "name": "guardian-nexus",
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    },
+    {
+      "src": "/(.*\\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot))",
+      "headers": {
+        "Cache-Control": "public, max-age=31536000, immutable"
+      }
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  },
+  "functions": {
+    "api/**/*.js": {
+      "runtime": "nodejs18.x",
+      "maxDuration": 30
+    }
+  },
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, POST, PUT, DELETE, OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "Content-Type, Authorization"
+        },
+        {
+          "key": "Access-Control-Allow-Credentials",
+          "value": "true"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/bungie/oauth/token",
+      "destination": "/api/bungie/oauth/token.js"
+    },
+    {
+      "source": "/api/bungie/user/profile",
+      "destination": "/api/bungie/user/profile.js"
+    },
+    {
+      "source": "/api/bungie/user/memberships",
+      "destination": "/api/bungie/user/memberships.js"
+    },
+    {
+      "source": "/api/destiny2/profile/:membershipType/:membershipId",
+      "destination": "/api/destiny2/profile/[membershipType]/[membershipId].js"
+    },
+    {
+      "source": "/api/manifest/info",
+      "destination": "/api/manifest/info.js"
+    }
+  ]
+}

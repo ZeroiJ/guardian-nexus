@@ -7,13 +7,13 @@ const BUNGIE_CONFIG = {
   authURL: 'https://www.bungie.net/en/OAuth/Authorize',
   redirectURI: `${window?.location?.origin}/auth/bungie/callback`,
   scopes: 'ReadBasicUserProfile ReadCharacterData ReadInventoryData ReadClanData ReadRecords',
-  // Backend proxy configuration
-  backendURL: import.meta.env?.VITE_BACKEND_URL || 'http://localhost:3001'
+  // API base URL - uses relative paths for Vercel deployment
+  apiBaseURL: '/api'
 };
 
-// Axios instance for backend API calls
-const backendAPI = axios?.create({
-  baseURL: `${BUNGIE_CONFIG.backendURL}/api`,
+// Axios instance for API calls
+const apiClient = axios?.create({
+  baseURL: BUNGIE_CONFIG.apiBaseURL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -99,7 +99,7 @@ export class BungieAuthService {
    */
   static async exchangeCodeForTokens(code) {
     try {
-      const response = await backendAPI.post('/bungie/oauth/token', {
+      const response = await apiClient.post('/bungie/oauth/token', {
         grant_type: 'authorization_code',
         code: code,
         redirect_uri: BUNGIE_CONFIG.redirectURI
@@ -118,7 +118,7 @@ export class BungieAuthService {
    */
   static async getCurrentUserProfile(accessToken) {
     try {
-      const response = await backendAPI.get('/bungie/user/profile', {
+      const response = await apiClient.get('/bungie/user/profile', {
         headers: {
           'Authorization': `Bearer ${accessToken}`
         }
@@ -198,7 +198,7 @@ export class BungieAuthService {
         throw new Error('No refresh token available');
       }
 
-      const response = await backendAPI.post('/bungie/oauth/token', {
+      const response = await apiClient.post('/bungie/oauth/token', {
         grant_type: 'refresh_token',
         refresh_token: connection?.refresh_token
       });
@@ -284,7 +284,7 @@ export class BungieAuthService {
     }
 
     try {
-      const response = await backendAPI.request({
+      const response = await apiClient.request({
         url: `/bungie/proxy${endpoint}`,
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -311,7 +311,7 @@ export class BungieAuthService {
     }
 
     try {
-      const response = await backendAPI.get('/bungie/user/memberships', {
+      const response = await apiClient.get('/bungie/user/memberships', {
         headers: {
           'Authorization': `Bearer ${accessToken}`
         }
@@ -337,7 +337,7 @@ export class BungieAuthService {
     }
 
     try {
-      const response = await backendAPI.get(`/bungie/destiny2/${membershipType}/profile/${membershipId}/character`, {
+      const response = await apiClient.get(`/destiny2/profile/${membershipType}/${membershipId}`, {
         headers: {
           'Authorization': `Bearer ${accessToken}`
         }

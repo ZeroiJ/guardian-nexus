@@ -20,6 +20,9 @@ This repository serves as the central location for the Guardian Nexus codebase, 
 - Comprehensive error handling for OAuth flow
 - Rate limiting for Bungie API compliance
 - Secure token storage and management
+- Vercel serverless functions for unified deployment
+- Vercel configuration for proper routing and deployment
+- Environment variables documentation (.env.example)
 
 ### Changed
 - **BREAKING**: Replaced Supabase authentication with direct Bungie OAuth
@@ -66,10 +69,23 @@ This repository serves as the central location for the Guardian Nexus codebase, 
 - Added `VITE_BACKEND_URL=http://localhost:3001` to frontend `.env`
 - Created backend `.env` with Bungie API credentials and server config
 
+#### Vercel Deployment Restructuring
+- Migrated Express.js routes to Vercel serverless functions in `/api` directory:
+  - `/api/bungie/oauth/token.js` - OAuth token exchange
+  - `/api/bungie/user/profile.js` - User profile retrieval
+  - `/api/bungie/user/memberships.js` - Destiny memberships
+  - `/api/destiny2/profile/[membershipType]/[membershipId].js` - Character data
+  - `/api/manifest/info.js` - Destiny 2 manifest information
+- Created `vercel.json` configuration for proper routing and deployment
+- Updated frontend API calls to use relative paths (`/api/*`)
+- Configured environment variables for unified deployment
+- Added `.env.example` for deployment documentation
+
 ### Infrastructure
-- Backend server running on port 3001
+- Backend server running on port 3001 (development)
 - Frontend development server on port 4028
-- Both servers configured for local development
+- Unified structure ready for Vercel deployment
+- Serverless functions configured for production scaling
 
 ### Migration Notes
 - Users will need to re-authenticate with Bungie.net
