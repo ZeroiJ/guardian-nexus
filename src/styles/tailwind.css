@@ -1,0 +1,86 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Core Colors */
+    --color-background: #0F1419; /* deep-space-black */
+    --color-foreground: #E8E8E8; /* light-gray */
+    --color-border: rgba(74, 144, 226, 0.2); /* primary-blue-20 */
+    --color-input: #1A1F2E; /* elevated-dark-blue-gray */
+    --color-ring: #4A90E2; /* primary-blue */
+    
+    /* Card Colors */
+    --color-card: #1A1F2E; /* elevated-dark-blue-gray */
+    --color-card-foreground: #E8E8E8; /* light-gray */
+    --color-popover: #1A1F2E; /* elevated-dark-blue-gray */
+    --color-popover-foreground: #E8E8E8; /* light-gray */
+    
+    /* Muted Colors */
+    --color-muted: #1A1F2E; /* elevated-dark-blue-gray */
+    --color-muted-foreground: #A0A0A0; /* muted-gray */
+    
+    /* Primary Colors */
+    --color-primary: #4A90E2; /* destiny-blue */
+    --color-primary-foreground: #FFFFFF; /* white */
+    
+    /* Secondary Colors */
+    --color-secondary: #FF6B35; /* tactical-orange */
+    --color-secondary-foreground: #FFFFFF; /* white */
+    
+    /* Accent Colors */
+    --color-accent: #7B68EE; /* legendary-purple */
+    --color-accent-foreground: #FFFFFF; /* white */
+    
+    /* State Colors */
+    --color-destructive: #FF4757; /* error-red */
+    --color-destructive-foreground: #FFFFFF; /* white */
+    
+    --color-success: #00D084; /* vibrant-green */
+    --color-success-foreground: #FFFFFF; /* white */
+    
+    --color-warning: #FFB020; /* attention-amber */
+    --color-warning-foreground: #000000; /* black */
+    
+    --color-error: #FF4757; /* error-red */
+    --color-error-foreground: #FFFFFF; /* white */
+  }
+  
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer utilities {
+  .text-shadow-glow {
+    text-shadow: 0 0 8px rgba(74, 144, 226, 0.3);
+  }
+  
+  .box-shadow-tactical {
+    box-shadow: 0 2px 8px rgba(74, 144, 226, 0.15);
+  }
+  
+  .transition-tactical {
+    transition: all 150ms cubic-bezier(0.4, 0.0, 0.2, 1);
+  }
+  
+  .hover-scale {
+    transform: scale(1);
+    transition: transform 150ms cubic-bezier(0.4, 0.0, 0.2, 1);
+  }
+  
+  .hover-scale:hover {
+    transform: scale(1.02);
+  }
+}
