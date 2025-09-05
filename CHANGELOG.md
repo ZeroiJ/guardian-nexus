@@ -13,6 +13,32 @@ This repository serves as the central location for the Guardian Nexus codebase, 
 
 ## [Unreleased]
 
+## [2025-01-28] - OAuth Callback Routing Fix
+
+### Summary
+Resolved critical 404 error in OAuth callback routing for production deployment on Vercel. The issue was caused by missing SPA (Single Page Application) fallback configuration in vercel.json.
+
+### Fixed
+- **OAuth Callback 404 Error**: Resolved production routing issue preventing Bungie OAuth authentication
+  - Added SPA fallback rewrite rule `"/((?!api).*)" -> "/index.html"` to vercel.json
+  - Ensures all non-API routes are properly handled by React Router in production
+  - Fixed `/auth/callback` route returning 404 instead of serving the React application
+  - Maintained API endpoint routing while enabling client-side routing for all other paths
+
+### Technical Implementation
+- **Vercel Configuration**: Enhanced vercel.json with proper SPA routing
+  - Added regex pattern `/((?!api).*)` to exclude API routes from SPA fallback
+  - Preserves serverless function routing for `/api/*` endpoints
+  - Enables React Router to handle all frontend routes including OAuth callbacks
+- **Production Deployment**: Updated live deployment with routing fix
+  - New production URL: `https://guardian-nexus-710cil8bx-sujal-birwadkars-projects.vercel.app`
+  - OAuth authentication flow now functional in production environment
+
+### Development Status
+- ✅ **OAuth Callback Routing**: Production 404 error resolved
+- ✅ **SPA Configuration**: Proper client-side routing enabled
+- ✅ **Production Deployment**: Live deployment updated and functional
+
 ## [2025-01-28] - Landing Page & OAuth Authentication Fixes
 
 ### Summary

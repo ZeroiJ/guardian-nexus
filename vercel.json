@@ -100,6 +100,10 @@
     {
       "source": "/api/manifest/info",
       "destination": "/api/manifest/info.js"
+    },
+    {
+      "source": "/((?!api).*)",
+      "destination": "/index.html"
     }
   ]
 }
