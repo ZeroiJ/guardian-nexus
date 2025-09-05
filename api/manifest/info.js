@@ -1,5 +1,4 @@
 // Vercel serverless function for Destiny 2 manifest info
-const axios = require('axios');
 
 // Bungie API configuration
 const BUNGIE_CONFIG = {
@@ -17,15 +16,23 @@ const corsHeaders = {
   'Access-Control-Allow-Credentials': 'true'
 };
 
-// Axios instance for Bungie API
-const bungieAPI = axios.create({
-  baseURL: BUNGIE_CONFIG.baseURL,
-  headers: {
-    'X-API-Key': BUNGIE_CONFIG.apiKey,
-    'Content-Type': 'application/json'
-  },
-  timeout: 10000
-});
+// Helper function to make Bungie API requests using fetch
+async function fetchBungieAPI(endpoint) {
+  const url = `${BUNGIE_CONFIG.baseURL}${endpoint}`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'X-API-Key': BUNGIE_CONFIG.apiKey,
+      'Content-Type': 'application/json'
+    }
+  });
+  
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+  
+  return await response.json();
+}
 
 export default async function handler(req, res) {
   // Handle CORS preflight
@@ -53,8 +60,7 @@ export default async function handler(req, res) {
 
   try {
     // Get manifest info from Bungie API
-    const response = await bungieAPI.get('/Destiny2/Manifest/');
-    const manifestData = response.data;
+    const manifestData = await fetchBungieAPI('/Destiny2/Manifest/');
 
     if (manifestData.ErrorCode !== 1) {
       throw new Error(`Bungie API Error: ${manifestData.Message}`);
