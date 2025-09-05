@@ -83,6 +83,12 @@ export class BungieAuthService {
     try {
       // Verify state parameter
       const storedState = localStorage.getItem('bungie_oauth_state');
+      console.log('OAuth State Debug:', {
+        receivedState: state,
+        storedState: storedState,
+        match: state === storedState
+      });
+      
       if (state !== storedState) {
         throw new Error('Invalid state parameter - possible CSRF attack');
       }
@@ -125,8 +131,7 @@ export class BungieAuthService {
     try {
       const response = await apiClient.post('/bungie/oauth/token', {
         grant_type: 'authorization_code',
-        code: code,
-        redirect_uri: BUNGIE_CONFIG.redirectURI
+        code: code
       });
 
       return response.data;
