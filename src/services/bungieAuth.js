@@ -61,6 +61,14 @@ export class BungieAuthService {
   static initiateOAuth() {
     const state = crypto.randomUUID();
     localStorage.setItem('bungie_oauth_state', state);
+    
+    // Debug: Verify state was stored
+    const storedState = localStorage.getItem('bungie_oauth_state');
+    console.log('OAuth Initiation Debug:', {
+      generatedState: state,
+      storedState: storedState,
+      storageWorking: state === storedState
+    });
 
     const authParams = new URLSearchParams({
       client_id: BUNGIE_CONFIG.clientId,
