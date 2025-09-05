@@ -59,48 +59,85 @@ export class BungieAuthService {
    * Initiates the Bungie OAuth flow by redirecting to Bungie's authorization page
    */
   static initiateOAuth() {
-    const state = crypto.randomUUID();
-    localStorage.setItem('bungie_oauth_state', state);
+    // Generate a random state parameter for CSRF protection
+    const generatedState = crypto.randomUUID();
     
-    // Debug: Verify state was stored
-    const storedState = localStorage.getItem('bungie_oauth_state');
+    // Store state in both localStorage and sessionStorage for redundancy
+    localStorage.setItem('bungie_oauth_state', generatedState);
+    sessionStorage.setItem('bungie_oauth_state', generatedState);
+    
+    // Also store in a cookie as backup (expires in 10 minutes)
+    document.cookie = `bungie_oauth_state=${generatedState}; max-age=600; path=/; SameSite=Lax`;
+    
+    // Debug logging
+    const storedStateLocal = localStorage.getItem('bungie_oauth_state');
+    const storedStateSession = sessionStorage.getItem('bungie_oauth_state');
     console.log('OAuth Initiation Debug:', {
-      generatedState: state,
-      storedState: storedState,
-      storageWorking: state === storedState
+      generatedState,
+      storedStateLocal,
+      storedStateSession,
+      localStorageWorking: storedStateLocal === generatedState,
+      sessionStorageWorking: storedStateSession === generatedState
     });
+    
+    // Construct authorization URL
+    const authURL = new URL(BUNGIE_CONFIG.authURL);
+    authURL.searchParams.append('client_id', BUNGIE_CONFIG.clientId);
+    authURL.searchParams.append('response_type', 'code');
+    authURL.searchParams.append('redirect_uri', BUNGIE_CONFIG.redirectURI);
+    authURL.searchParams.append('state', generatedState);
+    
+    // Redirect to Bungie OAuth
+    window.location.href = authURL.toString();
+  }
 
-    const authParams = new URLSearchParams({
-      client_id: BUNGIE_CONFIG.clientId,
-      response_type: 'code',
-      redirect_uri: BUNGIE_CONFIG.redirectURI,
-      state: state
-    });
-
-    const authURL = `${BUNGIE_CONFIG?.authURL}?${authParams?.toString()}`;
-    window.location.href = authURL;
+  /**
+   * Helper function to get cookie value by name
+   * @private
+   */
+  static getCookie(name) {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+    return null;
   }
 
   /**
    * Handles the OAuth callback and exchanges code for tokens
    * @param {string} code - Authorization code from Bungie
    * @param {string} state - State parameter for CSRF protection
-   * @returns {Promise<Object>} Token response and user data
+   * @returns {Object} Authentication result with user profile and tokens
    */
   static async handleOAuthCallback(code, state) {
     try {
-      // Verify state parameter
-      const storedState = localStorage.getItem('bungie_oauth_state');
+      // Verify state parameter - check multiple storage locations
+      const storedStateLocal = localStorage.getItem('bungie_oauth_state');
+      const storedStateSession = sessionStorage.getItem('bungie_oauth_state');
+      const storedStateCookie = this.getCookie('bungie_oauth_state');
+      
       console.log('OAuth State Debug:', {
         receivedState: state,
-        storedState: storedState,
-        match: state === storedState
+        storedStateLocal,
+        storedStateSession,
+        storedStateCookie,
+        localMatch: state === storedStateLocal,
+        sessionMatch: state === storedStateSession,
+        cookieMatch: state === storedStateCookie
       });
       
-      if (state !== storedState) {
+      // Check if state matches any of the stored values
+      const isValidState = state === storedStateLocal || 
+                          state === storedStateSession || 
+                          state === storedStateCookie;
+      
+      if (!isValidState) {
         throw new Error('Invalid state parameter - possible CSRF attack');
       }
+      
+      // Clean up stored state from all locations
       localStorage.removeItem('bungie_oauth_state');
+      sessionStorage.removeItem('bungie_oauth_state');
+      document.cookie = 'bungie_oauth_state=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
 
       // Exchange code for tokens
       const tokenResponse = await this.exchangeCodeForTokens(code);
@@ -142,7 +179,13 @@ export class BungieAuthService {
         code: code
       });
 
-      return response.data;
+      // Backend returns {success: true, data: tokenData}
+      // apiClient wraps it in {data: ...}, so we need response.data.data
+      if (response.data && response.data.success && response.data.data) {
+        return response.data.data;
+      } else {
+        throw new Error('Invalid response format from token exchange API');
+      }
     } catch (error) {
       console.error('Token exchange error:', error);
       throw new Error(`Token exchange failed: ${error.message}`);
@@ -260,7 +303,14 @@ export class BungieAuthService {
         refresh_token: connection?.refresh_token
       });
 
-      const newTokens = response.data;
+      // Backend returns {success: true, data: tokenData}
+      // apiClient wraps it in {data: ...}, so we need response.data.data
+      let newTokens;
+      if (response.data && response.data.success && response.data.data) {
+        newTokens = response.data.data;
+      } else {
+        throw new Error('Invalid response format from token refresh API');
+      }
       const expiresAt = new Date(Date.now() + (newTokens?.expires_in * 1000));
 
       // Encrypt new tokens before updating in localStorage
