@@ -67,7 +67,6 @@ export class BungieAuthService {
       client_id: BUNGIE_CONFIG.clientId,
       response_type: 'code',
       redirect_uri: BUNGIE_CONFIG.redirectURI,
-      scope: BUNGIE_CONFIG.scopes,
       state: state
     });
 
