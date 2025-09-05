@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OAuth State Debug - Comprehensive Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .results { background: #f9f9f9; padding: 10px; margin: 5px 0; border-radius: 3px; font-family: monospace; }
+        .error { background: #ffebee; color: #c62828; border-left: 4px solid #c62828; }
+        .success { background: #e8f5e9; color: #2e7d32; border-left: 4px solid #2e7d32; }
+        .warning { background: #fff3e0; color: #f57c00; border-left: 4px solid #f57c00; }
+        .info { background: #e3f2fd; color: #1976d2; border-left: 4px solid #1976d2; }
+        button { padding: 8px 16px; margin: 5px; cursor: pointer; border: none; border-radius: 4px; }
+        .btn-primary { background: #1976d2; color: white; }
+        .btn-secondary { background: #757575; color: white; }
+        .btn-danger { background: #d32f2f; color: white; }
+        .url-test { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>OAuth State Validation - Comprehensive Debug Test</h1>
+        
+        <div class="test-section">
+            <h3>Quick Tests</h3>
+            <button class="btn-primary" onclick="runBasicStorageTest()">Basic Storage Test</button>
+            <button class="btn-primary" onclick="runFullOAuthSimulation()">Full OAuth Simulation</button>
+            <button class="btn-secondary" onclick="runURLParameterTest()">URL Parameter Test</button>
+            <button class="btn-danger" onclick="clearAllStorage()">Clear All Storage</button>
+        </div>
+
+        <div class="test-section">
+            <h3>URL Simulation Test</h3>
+            <p>Test different callback URL formats:</p>
+            <div class="url-test">
+                <input type="text" id="testUrl" placeholder="Enter callback URL with state parameter" 
+                       value="http://localhost:4028/auth/callback?code=test123&state=abc123def456" 
+                       style="width: 100%; padding: 8px; margin: 5px 0;">
+                <button class="btn-primary" onclick="testCallbackURL()">Test This URL</button>
+            </div>
+        </div>
+
+        <div id="results"></div>
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            const resultsDiv = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `results ${type}`;
+            div.innerHTML = `<strong>${new Date().toLocaleTimeString()}:</strong> ${message}`;
+            resultsDiv.appendChild(div);
+            console.log(`[${type.toUpperCase()}] ${message}`);
+            
+            // Auto-scroll to bottom
+            resultsDiv.scrollTop = resultsDiv.scrollHeight;
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        function runBasicStorageTest() {
+            clearResults();
+            log('=== Basic Storage Test Started ===', 'info');
+            
+            const testState = 'test_' + Math.random().toString(36).substring(2, 15);
+            log(`Generated test state: ${testState}`);
+            
+            // Clear existing
+            localStorage.removeItem('bungie_oauth_state');
+            sessionStorage.removeItem('bungie_oauth_state');
+            document.cookie = 'bungie_oauth_state=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+            
+            // Test each storage method
+            const tests = [
+                {
+                    name: 'localStorage',
+                    set: () => localStorage.setItem('bungie_oauth_state', testState),
+                    get: () => localStorage.getItem('bungie_oauth_state')
+                },
+                {
+                    name: 'sessionStorage',
+                    set: () => sessionStorage.setItem('bungie_oauth_state', testState),
+                    get: () => sessionStorage.getItem('bungie_oauth_state')
+                },
+                {
+                    name: 'cookie',
+                    set: () => document.cookie = `bungie_oauth_state=${testState}; max-age=600; path=/; SameSite=Lax`,
+                    get: () => getCookie('bungie_oauth_state')
+                }
+            ];
+            
+            tests.forEach(test => {
+                try {
+                    test.set();
+                    const result = test.get();
+                    const success = result === testState;
+                    log(`${test.name}: ${success ? 'PASS' : 'FAIL'} - Set: '${testState}', Got: '${result}'`, 
+                        success ? 'success' : 'error');
+                } catch (error) {
+                    log(`${test.name}: ERROR - ${error.message}`, 'error');
+                }
+            });
+        }
+
+        function runFullOAuthSimulation() {
+            clearResults();
+            log('=== Full OAuth Flow Simulation Started ===', 'info');
+            
+            // Step 1: Simulate OAuth initiation
+            log('Step 1: Simulating OAuth initiation...', 'info');
+            const generatedState = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+            
+            // Clear existing states
+            localStorage.removeItem('bungie_oauth_state');
+            sessionStorage.removeItem('bungie_oauth_state');
+            document.cookie = 'bungie_oauth_state=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+            
+            // Store state in all locations (like the real service does)
+            localStorage.setItem('bungie_oauth_state', generatedState);
+            sessionStorage.setItem('bungie_oauth_state', generatedState);
+            document.cookie = `bungie_oauth_state=${generatedState}; max-age=600; path=/; SameSite=Lax`;
+            
+            log(`Generated and stored state: ${generatedState}`);
+            
+            // Verify storage immediately
+            const storedLocal = localStorage.getItem('bungie_oauth_state');
+            const storedSession = sessionStorage.getItem('bungie_oauth_state');
+            const storedCookie = getCookie('bungie_oauth_state');
+            
+            log(`Immediate verification - Local: ${storedLocal === generatedState}, Session: ${storedSession === generatedState}, Cookie: ${storedCookie === generatedState}`, 
+                (storedLocal === generatedState && storedSession === generatedState && storedCookie === generatedState) ? 'success' : 'warning');
+            
+            // Step 2: Simulate callback after delay (like real OAuth flow)
+            setTimeout(() => {
+                log('Step 2: Simulating OAuth callback (after redirect delay)...', 'info');
+                
+                // Simulate receiving state from URL parameters
+                const receivedState = generatedState; // In real flow, this comes from URL
+                
+                // Re-check stored states (they might have changed)
+                const callbackStoredLocal = localStorage.getItem('bungie_oauth_state');
+                const callbackStoredSession = sessionStorage.getItem('bungie_oauth_state');
+                const callbackStoredCookie = getCookie('bungie_oauth_state');
+                
+                log('Callback state verification:', 'info');
+                log(`  Received: '${receivedState}' (${typeof receivedState}, length: ${receivedState?.length})`);
+                log(`  Local: '${callbackStoredLocal}' (${typeof callbackStoredLocal}, length: ${callbackStoredLocal?.length})`);
+                log(`  Session: '${callbackStoredSession}' (${typeof callbackStoredSession}, length: ${callbackStoredSession?.length})`);
+                log(`  Cookie: '${callbackStoredCookie}' (${typeof callbackStoredCookie}, length: ${callbackStoredCookie?.length})`);
+                
+                // Test validation logic
+                const localMatch = receivedState === callbackStoredLocal;
+                const sessionMatch = receivedState === callbackStoredSession;
+                const cookieMatch = receivedState === callbackStoredCookie;
+                const isValid = localMatch || sessionMatch || cookieMatch;
+                
+                log(`Validation results: Local=${localMatch}, Session=${sessionMatch}, Cookie=${cookieMatch}`, 
+                    isValid ? 'success' : 'error');
+                
+                if (!isValid) {
+                    log('VALIDATION FAILED - Detailed analysis:', 'error');
+                    log(`  String comparison: Local='${String(callbackStoredLocal) === String(receivedState)}', Session='${String(callbackStoredSession) === String(receivedState)}', Cookie='${String(callbackStoredCookie) === String(receivedState)}'`);
+                    log(`  Trimmed comparison: Local='${callbackStoredLocal?.trim() === receivedState?.trim()}', Session='${callbackStoredSession?.trim() === receivedState?.trim()}', Cookie='${callbackStoredCookie?.trim() === receivedState?.trim()}'`);
+                } else {
+                    log(`SUCCESS - State validated via ${localMatch ? 'localStorage' : sessionMatch ? 'sessionStorage' : 'cookie'}`, 'success');
+                }
+            }, 1000);
+        }
+
+        function runURLParameterTest() {
+            clearResults();
+            log('=== URL Parameter Parsing Test ===', 'info');
+            
+            const testUrls = [
+                'http://localhost:4028/auth/callback?code=test123&state=abc123',
+                'http://localhost:4028/auth/callback?state=def456&code=test789',
+                'http://localhost:4028/auth/callback?code=test&state=state_with_underscores',
+                'http://localhost:4028/auth/callback?code=test&state=state-with-dashes',
+                'http://localhost:4028/auth/callback?error=access_denied&state=error_state',
+                'http://localhost:4028/auth/callback?code=test123&state=',
+                'http://localhost:4028/auth/callback?code=test123'
+            ];
+            
+            testUrls.forEach((url, index) => {
+                log(`--- Test ${index + 1}: ${url} ---`);
+                const urlObj = new URL(url);
+                const code = urlObj.searchParams.get('code');
+                const state = urlObj.searchParams.get('state');
+                const error = urlObj.searchParams.get('error');
+                
+                log(`  Parsed - Code: '${code}', State: '${state}', Error: '${error}'`);
+                
+                if (error) {
+                    log(`  Result: Authorization error detected`, 'warning');
+                } else if (!code || !state) {
+                    log(`  Result: Missing required parameters`, 'error');
+                } else {
+                    log(`  Result: Valid callback parameters`, 'success');
+                }
+            });
+        }
+
+        function testCallbackURL() {
+            const url = document.getElementById('testUrl').value;
+            if (!url) {
+                log('Please enter a URL to test', 'warning');
+                return;
+            }
+            
+            clearResults();
+            log(`=== Testing Custom URL: ${url} ===`, 'info');
+            
+            try {
+                const urlObj = new URL(url);
+                const code = urlObj.searchParams.get('code');
+                const state = urlObj.searchParams.get('state');
+                const error = urlObj.searchParams.get('error');
+                
+                log(`Parsed parameters:`);
+                log(`  Code: '${code}' (${typeof code}, length: ${code?.length})`);
+                log(`  State: '${state}' (${typeof state}, length: ${state?.length})`);
+                log(`  Error: '${error}' (${typeof error})`);
+                
+                if (state) {
+                    // Test against stored states
+                    const storedLocal = localStorage.getItem('bungie_oauth_state');
+                    const storedSession = sessionStorage.getItem('bungie_oauth_state');
+                    const storedCookie = getCookie('bungie_oauth_state');
+                    
+                    log('Comparing with stored states:');
+                    log(`  localStorage: '${storedLocal}' - Match: ${state === storedLocal}`, state === storedLocal ? 'success' : 'error');
+                    log(`  sessionStorage: '${storedSession}' - Match: ${state === storedSession}`, state === storedSession ? 'success' : 'error');
+                    log(`  cookie: '${storedCookie}' - Match: ${state === storedCookie}`, state === storedCookie ? 'success' : 'error');
+                }
+            } catch (error) {
+                log(`URL parsing error: ${error.message}`, 'error');
+            }
+        }
+
+        function clearAllStorage() {
+            localStorage.removeItem('bungie_oauth_state');
+            sessionStorage.removeItem('bungie_oauth_state');
+            document.cookie = 'bungie_oauth_state=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+            log('All storage cleared', 'success');
+        }
+
+        // Helper function to get cookie (matching the service implementation)
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+            return null;
+        }
+
+        // Auto-run basic test on load
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                log('Page loaded - Ready for testing', 'info');
+                log('Click "Basic Storage Test" to verify storage mechanisms work correctly', 'info');
+            }, 500);
+        });
+    </script>
+</body>
+</html>

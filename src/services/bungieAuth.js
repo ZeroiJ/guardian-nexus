@@ -11,7 +11,7 @@ const BUNGIE_CONFIG = {
   },
   scopes: 'ReadBasicUserProfile ReadCharacterData ReadInventoryData ReadClanData ReadRecords',
   // API base URL - uses relative paths for Vercel deployment
-  apiBaseURL: '/api'
+  apiBaseURL: import.meta.env.VITE_BACKEND_URL || '/api'
 };
 
 /**
@@ -111,6 +111,52 @@ export class BungieAuthService {
     const parts = value.split(`; ${name}=`);
     if (parts.length === 2) return parts.pop().split(';').shift();
     return null;
+  }
+
+  /**
+   * Test method to validate OAuth state storage and retrieval
+   * @returns {Object} Test results
+   */
+  static testOAuthStateValidation() {
+    console.log('=== OAuth State Validation Test ===');
+    
+    // Generate test state
+    const testState = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    console.log('Generated test state:', testState);
+    
+    // Clear existing states
+    localStorage.removeItem('bungie_oauth_state');
+    sessionStorage.removeItem('bungie_oauth_state');
+    document.cookie = 'bungie_oauth_state=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    
+    // Store test state
+    localStorage.setItem('bungie_oauth_state', testState);
+    sessionStorage.setItem('bungie_oauth_state', testState);
+    document.cookie = `bungie_oauth_state=${testState}; max-age=600; path=/; SameSite=Lax`;
+    
+    // Retrieve and validate
+    const retrievedLocal = localStorage.getItem('bungie_oauth_state');
+    const retrievedSession = sessionStorage.getItem('bungie_oauth_state');
+    const cookies = document.cookie.split(';').reduce((acc, cookie) => {
+      const [key, value] = cookie.trim().split('=');
+      acc[key] = value;
+      return acc;
+    }, {});
+    const retrievedCookie = cookies['bungie_oauth_state'];
+    
+    const results = {
+      testState,
+      retrievedLocal,
+      retrievedSession,
+      retrievedCookie,
+      localStorageWorking: retrievedLocal === testState,
+      sessionStorageWorking: retrievedSession === testState,
+      cookieWorking: retrievedCookie === testState,
+      allStorageWorking: retrievedLocal === testState && retrievedSession === testState && retrievedCookie === testState
+    };
+    
+    console.log('OAuth State Test Results:', results);
+    return results;
   }
 
   /**
