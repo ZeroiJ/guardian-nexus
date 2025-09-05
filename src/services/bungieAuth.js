@@ -1,4 +1,3 @@
-import { supabase } from '../lib/supabase';
 import { encryptToken, decryptToken, isTokenEncrypted } from '../utils/tokenSecurity';
 
 // Bungie API Configuration
@@ -91,23 +90,17 @@ export class BungieAuthService {
 
       // Exchange code for tokens
       const tokenResponse = await this.exchangeCodeForTokens(code);
-      const { access_token, refresh_token, expires_in } = tokenResponse;
+      const { access_token, refresh_token, expires_in, membership_id } = tokenResponse;
 
       // Get user profile data
       const userProfile = await this.getCurrentUserProfile(access_token);
       
-      // Get current Supabase user
-      const { data: { user: supabaseUser } } = await supabase?.auth?.getUser();
-      if (!supabaseUser) {
-        throw new Error('User must be logged into Supabase first');
-      }
-
-      // Store tokens and profile data in Supabase
-      await this.storeBungieTokens(supabaseUser?.id, {
+      // Store tokens and profile data in localStorage
+      await this.storeBungieTokens({
         access_token,
         refresh_token,
         expires_in,
-        bungie_user_id: userProfile?.membershipId,
+        bungie_user_id: userProfile?.membershipId || membership_id,
         display_name: userProfile?.displayName,
         profile_data: userProfile
       });
@@ -163,10 +156,10 @@ export class BungieAuthService {
   }
 
   /**
-   * Stores Bungie tokens and profile data in Supabase
+   * Stores Bungie tokens and profile data in localStorage
    * @private
    */
-  static async storeBungieTokens(userId, tokenData) {
+  static async storeBungieTokens(tokenData) {
     const expiresAt = new Date(Date.now() + (tokenData?.expires_in * 1000));
 
     try {
@@ -174,21 +167,21 @@ export class BungieAuthService {
       const encryptedAccessToken = encryptToken(tokenData?.access_token);
       const encryptedRefreshToken = encryptToken(tokenData?.refresh_token);
 
-      const { error } = await supabase?.from('bungie_connections')?.upsert({
-          user_id: userId,
-          bungie_user_id: tokenData?.bungie_user_id,
-          access_token: encryptedAccessToken,
-          refresh_token: encryptedRefreshToken,
-          expires_at: expiresAt?.toISOString(),
-          display_name: tokenData?.display_name,
-          profile_data: tokenData?.profile_data,
-          is_active: true,
-          updated_at: new Date()?.toISOString()
-        });
+      const connectionData = {
+        bungie_user_id: tokenData?.bungie_user_id,
+        access_token: encryptedAccessToken,
+        refresh_token: encryptedRefreshToken,
+        expires_at: expiresAt?.toISOString(),
+        display_name: tokenData?.display_name,
+        profile_data: tokenData?.profile_data,
+        is_active: true,
+        updated_at: new Date()?.toISOString()
+      };
 
-      if (error) {
-        throw new Error(`Failed to store tokens: ${error?.message}`);
-      }
+      // Store in localStorage
+      localStorage.setItem('bungie_connection', JSON.stringify(connectionData));
+      localStorage.setItem('bungie_auth_status', 'connected');
+      
     } catch (encryptionError) {
       console.error('Token encryption failed:', encryptionError.message);
       throw new Error('Failed to securely store tokens');
@@ -196,23 +189,17 @@ export class BungieAuthService {
   }
 
   /**
-   * Gets stored Bungie connection for current user
+   * Gets stored Bungie connection from localStorage
    * @returns {Promise<Object|null>} Bungie connection data or null
    */
   static async getBungieConnection() {
-    const { data: { user } } = await supabase?.auth?.getUser();
-    if (!user) return null;
-
-    const { data, error } = await supabase?.from('bungie_connections')?.select('*')?.eq('user_id', user?.id)?.eq('is_active', true)?.single();
-
-    if (error && error?.code !== 'PGRST116') {
-      console.error('Error fetching Bungie connection:', error);
-      return null;
-    }
-
-    if (!data) return null;
-
     try {
+      const connectionData = localStorage.getItem('bungie_connection');
+      if (!connectionData) return null;
+
+      const data = JSON.parse(connectionData);
+      if (!data || !data.is_active) return null;
+
       // Decrypt tokens before returning
       const decryptedData = {
         ...data,
@@ -221,9 +208,11 @@ export class BungieAuthService {
       };
       
       return decryptedData;
-    } catch (decryptionError) {
-      console.error('Token decryption failed:', decryptionError.message);
-      // If decryption fails, the tokens might be corrupted - return null to force re-authentication
+    } catch (error) {
+      console.error('Error fetching Bungie connection from localStorage:', error);
+      // If parsing or decryption fails, clear corrupted data
+      localStorage.removeItem('bungie_connection');
+      localStorage.removeItem('bungie_auth_status');
       return null;
     }
   }
@@ -261,23 +250,22 @@ export class BungieAuthService {
       const newTokens = response.data;
       const expiresAt = new Date(Date.now() + (newTokens?.expires_in * 1000));
 
-      // Encrypt new tokens before updating in database
+      // Encrypt new tokens before updating in localStorage
       try {
         const encryptedAccessToken = encryptToken(newTokens?.access_token);
         const encryptedRefreshToken = newTokens?.refresh_token ? 
           encryptToken(newTokens?.refresh_token) : 
           encryptToken(connection?.refresh_token);
 
-        const { error } = await supabase?.from('bungie_connections')?.update({
-            access_token: encryptedAccessToken,
-            refresh_token: encryptedRefreshToken,
-            expires_at: expiresAt?.toISOString(),
-            updated_at: new Date()?.toISOString()
-          })?.eq('id', connection?.id);
+        const updatedConnection = {
+          ...connection,
+          access_token: encryptedAccessToken,
+          refresh_token: encryptedRefreshToken,
+          expires_at: expiresAt?.toISOString(),
+          updated_at: new Date()?.toISOString()
+        };
 
-        if (error) {
-          throw new Error(`Failed to update tokens: ${error?.message}`);
-        }
+        localStorage.setItem('bungie_connection', JSON.stringify(updatedConnection));
       } catch (encryptionError) {
         console.error('Token encryption failed during refresh:', encryptionError.message);
         throw new Error('Failed to securely update tokens');
@@ -315,19 +303,15 @@ export class BungieAuthService {
   }
 
   /**
-   * Disconnects Bungie account by deactivating the connection
+   * Disconnects Bungie account by clearing localStorage
    * @returns {Promise<boolean>} True if successful
    */
   static async disconnect() {
     try {
-      const { data: { user } } = await supabase?.auth?.getUser();
-      if (!user) return false;
-
-      const { error } = await supabase?.from('bungie_connections')?.update({ is_active: false })?.eq('user_id', user?.id);
-
-      if (error) {
-        throw new Error(`Failed to disconnect: ${error?.message}`);
-      }
+      // Clear all Bungie-related data from localStorage
+      localStorage.removeItem('bungie_connection');
+      localStorage.removeItem('bungie_auth_status');
+      localStorage.removeItem('bungie_oauth_state');
 
       return true;
     } catch (error) {
