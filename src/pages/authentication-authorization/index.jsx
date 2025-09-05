@@ -39,7 +39,7 @@ const AuthenticationAuthorization = () => {
       setAuthState('loading');
       // OAuth callback is now handled by BungieCallback component
       // This page should redirect users who land here with callback params
-      navigate('/bungie-callback' + window.location.search, { replace: true });
+      navigate('/auth/callback' + window.location.search, { replace: true });
     }
   }, [searchParams, navigate]);
 

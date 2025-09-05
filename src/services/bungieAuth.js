@@ -5,7 +5,7 @@ import { encryptToken, decryptToken, isTokenEncrypted } from '../utils/tokenSecu
 const BUNGIE_CONFIG = {
   clientId: import.meta.env?.VITE_BUNGIE_CLIENT_ID,
   authURL: 'https://www.bungie.net/en/OAuth/Authorize',
-  redirectURI: `${window?.location?.origin}/auth/bungie/callback`,
+  redirectURI: `${window?.location?.origin}/auth/callback`,
   scopes: 'ReadBasicUserProfile ReadCharacterData ReadInventoryData ReadClanData ReadRecords',
   // API base URL - uses relative paths for Vercel deployment
   apiBaseURL: '/api'

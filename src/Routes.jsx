@@ -27,7 +27,7 @@ const Routes = () => {
             <Route path="/" element={<LandingPage />} />
             
             {/* OAuth callback - accessible without authentication */}
-            <Route path="/auth/bungie/callback" element={<BungieCallback />} />
+            <Route path="/auth/callback" element={<BungieCallback />} />
             
             {/* Protected routes - require authentication */}
             <Route path="/dashboard" element={
