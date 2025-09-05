@@ -40,7 +40,11 @@ const BungieCallback = () => {
           setMessage('Successfully connected to Bungie.net!');
           
           // Refresh auth context to update user state
-          await refreshAuth();
+          try {
+            await refreshAuth();
+          } catch (authError) {
+            console.warn('Auth context refresh failed, but OAuth was successful:', authError);
+          }
           
           // Redirect to dashboard after success
           setTimeout(() => {
@@ -53,7 +57,24 @@ const BungieCallback = () => {
       } catch (err) {
         console.error('Callback processing error:', err);
         setStatus('error');
-        setMessage(err?.message || 'An unexpected error occurred');
+        
+        // Provide more specific error messages based on error type
+        let errorMessage = 'An unexpected error occurred';
+        if (err?.message) {
+          if (err.message.includes('state parameter')) {
+            errorMessage = 'Security validation failed. Please try connecting again.';
+          } else if (err.message.includes('Token exchange failed')) {
+            errorMessage = 'Failed to complete authorization with Bungie. Please try again.';
+          } else if (err.message.includes('CORS')) {
+            errorMessage = 'Connection error. Please try again in a few moments.';
+          } else if (err.message.includes('expired')) {
+            errorMessage = 'Authorization session expired. Please start the connection process again.';
+          } else {
+            errorMessage = err.message;
+          }
+        }
+        
+        setMessage(errorMessage);
       }
     };
 

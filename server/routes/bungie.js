@@ -107,17 +107,23 @@ router.post('/oauth/token', validateApiKey, async (req, res) => {
       }
     });
 
-    res.json(response.data);
+    // Return wrapped response format expected by frontend
+    res.json({
+      success: true,
+      data: response.data
+    });
   } catch (error) {
     console.error('OAuth token exchange error:', error.response?.data || error.message);
     
     if (error.response) {
       res.status(error.response.status).json({
+        success: false,
         error: 'OAuth Error',
         message: error.response.data?.error_description || 'Token exchange failed'
       });
     } else {
       res.status(500).json({
+        success: false,
         error: 'Server Error',
         message: 'Failed to exchange token'
       });

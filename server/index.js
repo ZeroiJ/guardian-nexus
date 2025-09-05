@@ -13,8 +13,8 @@ app.use(helmet());
 // CORS configuration
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? ['https://your-domain.com'] 
-    : ['http://localhost:5173', 'http://localhost:3000'],
+    ? ['https://guardian-nexus.vercel.app', 'https://guardian-nexus-710cil8bx-sujal-birwadkars-projects.vercel.app'] 
+    : ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:4028'],
   credentials: true
 }));
 

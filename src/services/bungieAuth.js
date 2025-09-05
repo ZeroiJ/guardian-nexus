@@ -195,23 +195,40 @@ export class BungieAuthService {
         allCookies: document.cookie
       });
       
-      // Check if state matches any of the stored values
-      const isValidState = state === storedStateLocal || 
-                          state === storedStateSession || 
-                          state === storedStateCookie;
+      // Enhanced state validation with trimming and null checks
+      const receivedState = state?.trim();
+      const localState = storedStateLocal?.trim();
+      const sessionState = storedStateSession?.trim();
+      const cookieState = storedStateCookie?.trim();
+      
+      // Check if state matches any of the stored values (with trimming)
+      const isValidState = receivedState && (
+        receivedState === localState || 
+        receivedState === sessionState || 
+        receivedState === cookieState
+      );
       
       if (!isValidState) {
         console.error('State validation failed - detailed analysis:', {
-          hasReceivedState: !!state,
-          hasLocalState: !!storedStateLocal,
-          hasSessionState: !!storedStateSession,
-          hasCookieState: !!storedStateCookie,
-          receivedTrimmed: state?.trim(),
-          localTrimmed: storedStateLocal?.trim(),
-          sessionTrimmed: storedStateSession?.trim(),
-          cookieTrimmed: storedStateCookie?.trim()
+          hasReceivedState: !!receivedState,
+          hasLocalState: !!localState,
+          hasSessionState: !!sessionState,
+          hasCookieState: !!cookieState,
+          receivedState,
+          localState,
+          sessionState,
+          cookieState,
+          anyStoredState: !!(localState || sessionState || cookieState)
         });
-        throw new Error('Invalid state parameter - possible CSRF attack');
+        
+        // More specific error messages
+        if (!receivedState) {
+          throw new Error('Missing state parameter in OAuth callback');
+        }
+        if (!(localState || sessionState || cookieState)) {
+          throw new Error('No stored state found - OAuth session may have expired');
+        }
+        throw new Error('Invalid state parameter - possible CSRF attack or session mismatch');
       }
       
       // Clean up stored state from all locations
@@ -256,7 +273,8 @@ export class BungieAuthService {
     try {
       const response = await apiClient.post('/bungie/oauth/token', {
         grant_type: 'authorization_code',
-        code: code
+        code: code,
+        redirect_uri: BUNGIE_CONFIG.redirectURI
       });
 
       // Backend returns {success: true, data: tokenData}
