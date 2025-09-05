@@ -1,40 +1,16 @@
 {
   "version": 2,
-  "name": "guardian-nexus",
-  "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist"
-      }
+  "buildCommand": "npm run build",
+  "outputDirectory": "build",
+  "git": {
+    "deploymentEnabled": {
+      "master": true
     }
-  ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/$1"
-    },
-    {
-      "src": "/(.*\\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot))",
-      "headers": {
-        "Cache-Control": "public, max-age=31536000, immutable"
-      }
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
-    }
-  ],
+  },
   "env": {
     "NODE_ENV": "production"
   },
-  "functions": {
-    "api/**/*.js": {
-      "runtime": "nodejs18.x",
-      "maxDuration": 30
-    }
-  },
+
   "headers": [
     {
       "source": "/api/(.*)",
@@ -54,6 +30,15 @@
         {
           "key": "Access-Control-Allow-Credentials",
           "value": "true"
+        }
+      ]
+    },
+    {
+      "source": "/static/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
         }
       ]
     }
