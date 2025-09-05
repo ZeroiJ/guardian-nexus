@@ -4,7 +4,11 @@ import { encryptToken, decryptToken, isTokenEncrypted } from '../utils/tokenSecu
 const BUNGIE_CONFIG = {
   clientId: import.meta.env?.VITE_BUNGIE_CLIENT_ID,
   authURL: 'https://www.bungie.net/en/OAuth/Authorize',
-  redirectURI: `${window?.location?.origin}/auth/callback`,
+  get redirectURI() {
+    // Dynamically construct redirect URI to handle different environments
+    const origin = window?.location?.origin || 'http://localhost:4028';
+    return `${origin}/auth/callback`;
+  },
   scopes: 'ReadBasicUserProfile ReadCharacterData ReadInventoryData ReadClanData ReadRecords',
   // API base URL - uses relative paths for Vercel deployment
   apiBaseURL: '/api'
@@ -69,15 +73,22 @@ export class BungieAuthService {
     // Also store in a cookie as backup (expires in 10 minutes)
     document.cookie = `bungie_oauth_state=${generatedState}; max-age=600; path=/; SameSite=Lax`;
     
-    // Debug logging
+    // Enhanced debug logging
     const storedStateLocal = localStorage.getItem('bungie_oauth_state');
     const storedStateSession = sessionStorage.getItem('bungie_oauth_state');
-    console.log('OAuth Initiation Debug:', {
+    console.log('OAuth Initiation Debug - Enhanced:', {
       generatedState,
+      generatedStateLength: generatedState?.length,
       storedStateLocal,
+      storedStateLocalLength: storedStateLocal?.length,
       storedStateSession,
+      storedStateSessionLength: storedStateSession?.length,
       localStorageWorking: storedStateLocal === generatedState,
-      sessionStorageWorking: storedStateSession === generatedState
+      sessionStorageWorking: storedStateSession === generatedState,
+      currentOrigin: window.location.origin,
+      redirectURI: BUNGIE_CONFIG.redirectURI,
+      cookieSet: document.cookie.includes('bungie_oauth_state'),
+      timestamp: new Date().toISOString()
     });
     
     // Construct authorization URL
@@ -115,14 +126,27 @@ export class BungieAuthService {
       const storedStateSession = sessionStorage.getItem('bungie_oauth_state');
       const storedStateCookie = this.getCookie('bungie_oauth_state');
       
-      console.log('OAuth State Debug:', {
+      // Enhanced debugging with more details
+      console.log('OAuth Callback Debug - Full Details:', {
         receivedState: state,
+        receivedStateType: typeof state,
+        receivedStateLength: state?.length,
         storedStateLocal,
+        storedStateLocalType: typeof storedStateLocal,
+        storedStateLocalLength: storedStateLocal?.length,
         storedStateSession,
+        storedStateSessionType: typeof storedStateSession,
+        storedStateSessionLength: storedStateSession?.length,
         storedStateCookie,
+        storedStateCookieType: typeof storedStateCookie,
+        storedStateCookieLength: storedStateCookie?.length,
         localMatch: state === storedStateLocal,
         sessionMatch: state === storedStateSession,
-        cookieMatch: state === storedStateCookie
+        cookieMatch: state === storedStateCookie,
+        currentURL: window.location.href,
+        currentOrigin: window.location.origin,
+        redirectURI: BUNGIE_CONFIG.redirectURI,
+        allCookies: document.cookie
       });
       
       // Check if state matches any of the stored values
@@ -131,6 +155,16 @@ export class BungieAuthService {
                           state === storedStateCookie;
       
       if (!isValidState) {
+        console.error('State validation failed - detailed analysis:', {
+          hasReceivedState: !!state,
+          hasLocalState: !!storedStateLocal,
+          hasSessionState: !!storedStateSession,
+          hasCookieState: !!storedStateCookie,
+          receivedTrimmed: state?.trim(),
+          localTrimmed: storedStateLocal?.trim(),
+          sessionTrimmed: storedStateSession?.trim(),
+          cookieTrimmed: storedStateCookie?.trim()
+        });
         throw new Error('Invalid state parameter - possible CSRF attack');
       }
       
