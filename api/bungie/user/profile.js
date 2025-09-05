@@ -1,5 +1,4 @@
 // Vercel serverless function for Bungie user profile
-const axios = require('axios');
 
 // Bungie API configuration
 const BUNGIE_CONFIG = {
@@ -66,13 +65,23 @@ export default async function handler(req, res) {
 
   try {
     // Get user profile from Bungie API
-    const response = await bungieAPI.get('/User/GetCurrentBungieNetUser/', {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`
+    const response = await fetch(
+      `${BUNGIE_CONFIG.baseURL}/User/GetCurrentBungieNetUser/`,
+      {
+        method: 'GET',
+        headers: {
+          'X-API-Key': BUNGIE_CONFIG.apiKey,
+          'Authorization': `Bearer ${accessToken}`
+        }
       }
-    });
+    );
 
-    const userData = response.data;
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`Profile fetch failed: ${response.status} ${response.statusText}`);
+    }
+
+    const userData = await response.json();
 
     if (userData.ErrorCode !== 1) {
       throw new Error(`Bungie API Error: ${userData.Message}`);

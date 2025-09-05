@@ -1,5 +1,4 @@
 // Vercel serverless function for Bungie user memberships
-const axios = require('axios');
 
 // Bungie API configuration
 const BUNGIE_CONFIG = {
@@ -16,16 +15,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   'Access-Control-Allow-Credentials': 'true'
 };
-
-// Axios instance for Bungie API
-const bungieAPI = axios.create({
-  baseURL: BUNGIE_CONFIG.baseURL,
-  headers: {
-    'X-API-Key': BUNGIE_CONFIG.apiKey,
-    'Content-Type': 'application/json'
-  },
-  timeout: 10000
-});
 
 export default async function handler(req, res) {
   // Handle CORS preflight
@@ -66,13 +55,24 @@ export default async function handler(req, res) {
 
   try {
     // Get user memberships from Bungie API
-    const response = await bungieAPI.get('/User/GetMembershipsForCurrentUser/', {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`
+    const response = await fetch(
+      `${BUNGIE_CONFIG.baseURL}/User/GetMembershipsForCurrentUser/`,
+      {
+        method: 'GET',
+        headers: {
+          'X-API-Key': BUNGIE_CONFIG.apiKey,
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
       }
-    });
+    );
 
-    const membershipData = response.data;
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`Memberships fetch failed: ${response.status} ${response.statusText}`);
+    }
+
+    const membershipData = await response.json();
 
     if (membershipData.ErrorCode !== 1) {
       throw new Error(`Bungie API Error: ${membershipData.Message}`);
@@ -88,10 +88,10 @@ export default async function handler(req, res) {
       });
 
   } catch (error) {
-    console.error('User memberships fetch error:', error.response?.data || error.message);
+    console.error('User memberships fetch error:', error.message);
     
-    // Handle specific Bungie API errors
-    if (error.response?.status === 401) {
+    // Handle specific HTTP status errors
+    if (error.message.includes('401')) {
       return res.status(401)
         .setHeader('Access-Control-Allow-Origin', corsHeaders['Access-Control-Allow-Origin'])
         .json({
@@ -100,7 +100,7 @@ export default async function handler(req, res) {
         });
     }
 
-    if (error.response?.status === 403) {
+    if (error.message.includes('403')) {
       return res.status(403)
         .setHeader('Access-Control-Allow-Origin', corsHeaders['Access-Control-Allow-Origin'])
         .json({

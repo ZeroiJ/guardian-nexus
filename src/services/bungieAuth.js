@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import axios from 'axios';
+import { encryptToken, decryptToken, isTokenEncrypted } from '../utils/tokenSecurity';
 
 // Bungie API Configuration
 const BUNGIE_CONFIG = {
@@ -11,13 +11,45 @@ const BUNGIE_CONFIG = {
   apiBaseURL: '/api'
 };
 
-// Axios instance for API calls
-const apiClient = axios?.create({
-  baseURL: BUNGIE_CONFIG.apiBaseURL,
-  headers: {
-    'Content-Type': 'application/json',
+/**
+ * Fetch-based API client helper
+ */
+const apiClient = {
+  async post(url, data, options = {}) {
+    const response = await fetch(`${BUNGIE_CONFIG.apiBaseURL}${url}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+      },
+      body: JSON.stringify(data)
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+    }
+    
+    return { data: await response.json() };
   },
-});
+  
+  async get(url, options = {}) {
+    const response = await fetch(`${BUNGIE_CONFIG.apiBaseURL}${url}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+      }
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+    }
+    
+    return { data: await response.json() };
+  }
+};
 
 /**
  * Bungie Authentication Service
@@ -108,7 +140,7 @@ export class BungieAuthService {
       return response.data;
     } catch (error) {
       console.error('Token exchange error:', error);
-      throw new Error(`Token exchange failed: ${error.response?.data?.message || error.message}`);
+      throw new Error(`Token exchange failed: ${error.message}`);
     }
   }
 
@@ -127,7 +159,7 @@ export class BungieAuthService {
       return response.data;
     } catch (error) {
       console.error('Get user profile error:', error);
-      throw new Error(`Failed to get user profile: ${error.response?.data?.message || error.message}`);
+      throw new Error(`Failed to get user profile: ${error.message}`);
     }
   }
 
@@ -138,20 +170,29 @@ export class BungieAuthService {
   static async storeBungieTokens(userId, tokenData) {
     const expiresAt = new Date(Date.now() + (tokenData?.expires_in * 1000));
 
-    const { error } = await supabase?.from('bungie_connections')?.upsert({
-        user_id: userId,
-        bungie_user_id: tokenData?.bungie_user_id,
-        access_token: tokenData?.access_token,
-        refresh_token: tokenData?.refresh_token,
-        expires_at: expiresAt?.toISOString(),
-        display_name: tokenData?.display_name,
-        profile_data: tokenData?.profile_data,
-        is_active: true,
-        updated_at: new Date()?.toISOString()
-      });
+    try {
+      // Encrypt tokens before storing
+      const encryptedAccessToken = encryptToken(tokenData?.access_token);
+      const encryptedRefreshToken = encryptToken(tokenData?.refresh_token);
 
-    if (error) {
-      throw new Error(`Failed to store tokens: ${error?.message}`);
+      const { error } = await supabase?.from('bungie_connections')?.upsert({
+          user_id: userId,
+          bungie_user_id: tokenData?.bungie_user_id,
+          access_token: encryptedAccessToken,
+          refresh_token: encryptedRefreshToken,
+          expires_at: expiresAt?.toISOString(),
+          display_name: tokenData?.display_name,
+          profile_data: tokenData?.profile_data,
+          is_active: true,
+          updated_at: new Date()?.toISOString()
+        });
+
+      if (error) {
+        throw new Error(`Failed to store tokens: ${error?.message}`);
+      }
+    } catch (encryptionError) {
+      console.error('Token encryption failed:', encryptionError.message);
+      throw new Error('Failed to securely store tokens');
     }
   }
 
@@ -170,7 +211,22 @@ export class BungieAuthService {
       return null;
     }
 
-    return data;
+    if (!data) return null;
+
+    try {
+      // Decrypt tokens before returning
+      const decryptedData = {
+        ...data,
+        access_token: isTokenEncrypted(data.access_token) ? decryptToken(data.access_token) : data.access_token,
+        refresh_token: isTokenEncrypted(data.refresh_token) ? decryptToken(data.refresh_token) : data.refresh_token
+      };
+      
+      return decryptedData;
+    } catch (decryptionError) {
+      console.error('Token decryption failed:', decryptionError.message);
+      // If decryption fails, the tokens might be corrupted - return null to force re-authentication
+      return null;
+    }
   }
 
   /**
@@ -206,16 +262,26 @@ export class BungieAuthService {
       const newTokens = response.data;
       const expiresAt = new Date(Date.now() + (newTokens?.expires_in * 1000));
 
-      // Update tokens in database
-      const { error } = await supabase?.from('bungie_connections')?.update({
-          access_token: newTokens?.access_token,
-          refresh_token: newTokens?.refresh_token || connection?.refresh_token,
-          expires_at: expiresAt?.toISOString(),
-          updated_at: new Date()?.toISOString()
-        })?.eq('id', connection?.id);
+      // Encrypt new tokens before updating in database
+      try {
+        const encryptedAccessToken = encryptToken(newTokens?.access_token);
+        const encryptedRefreshToken = newTokens?.refresh_token ? 
+          encryptToken(newTokens?.refresh_token) : 
+          encryptToken(connection?.refresh_token);
 
-      if (error) {
-        throw new Error(`Failed to update tokens: ${error?.message}`);
+        const { error } = await supabase?.from('bungie_connections')?.update({
+            access_token: encryptedAccessToken,
+            refresh_token: encryptedRefreshToken,
+            expires_at: expiresAt?.toISOString(),
+            updated_at: new Date()?.toISOString()
+          })?.eq('id', connection?.id);
+
+        if (error) {
+          throw new Error(`Failed to update tokens: ${error?.message}`);
+        }
+      } catch (encryptionError) {
+        console.error('Token encryption failed during refresh:', encryptionError.message);
+        throw new Error('Failed to securely update tokens');
       }
 
       return true;
@@ -296,7 +362,7 @@ export class BungieAuthService {
       return response.data;
     } catch (error) {
       console.error('Bungie API request error:', error);
-      throw new Error(`Bungie API error: ${error.response?.data?.message || error.message}`);
+      throw new Error(`Bungie API error: ${error.message}`);
     }
   }
 
@@ -320,7 +386,7 @@ export class BungieAuthService {
       return response.data;
     } catch (error) {
       console.error('Get memberships error:', error);
-      throw new Error(`Failed to get memberships: ${error.response?.data?.message || error.message}`);
+      throw new Error(`Failed to get memberships: ${error.message}`);
     }
   }
 
@@ -340,13 +406,16 @@ export class BungieAuthService {
       const response = await apiClient.get(`/destiny2/profile/${membershipType}/${membershipId}`, {
         headers: {
           'Authorization': `Bearer ${accessToken}`
+        },
+        params: {
+          components: '200' // Characters component
         }
       });
 
       return response.data;
     } catch (error) {
       console.error('Get characters error:', error);
-      throw new Error(`Failed to get characters: ${error.response?.data?.message || error.message}`);
+      throw new Error(`Failed to get characters: ${error.message}`);
     }
   }
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Header from '../../components/ui/Header';
+import UserProfile from '../../components/ui/UserProfile';
 import CharacterCard from './components/CharacterCard';
 import MilestoneCard from './components/MilestoneCard';
 import VendorCard from './components/VendorCard';
@@ -277,17 +278,27 @@ const Dashboard = () => {
                 >
                   Refresh Data
                 </Button>
-                
-                <Link to="/character-management">
-                  <Button
-                    variant="default"
-                    iconName="Users"
-                    iconPosition="left"
-                  >
-                    Manage Characters
-                  </Button>
-                </Link>
               </div>
+            </div>
+          </div>
+
+          {/* User Profile Section */}
+          <div className="mb-8">
+            <UserProfile className="w-full" />
+          </div>
+
+          {/* Dashboard Actions */}
+          <div className="mb-8">
+            <div className="flex items-center space-x-4">
+              <Link to="/character-management">
+                <Button
+                  variant="default"
+                  iconName="Users"
+                  iconPosition="left"
+                >
+                  Manage Characters
+                </Button>
+              </Link>
             </div>
           </div>
 
