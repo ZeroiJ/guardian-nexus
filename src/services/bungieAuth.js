@@ -1,4 +1,6 @@
 import { encryptToken, decryptToken, isTokenEncrypted } from '../utils/tokenSecurity';
+import logger from '../utils/logger';
+import { validateOAuthState, safeFetch, cleanupOAuthState, GuardianError, ERROR_CODES } from '../utils/errorHandler';
 
 // Bungie API Configuration
 const BUNGIE_CONFIG = {
@@ -19,38 +21,81 @@ const BUNGIE_CONFIG = {
  */
 const apiClient = {
   async post(url, data, options = {}) {
-    const response = await fetch(`${BUNGIE_CONFIG.apiBaseURL}${url}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-      },
-      body: JSON.stringify(data)
-    });
+    const fullUrl = `${BUNGIE_CONFIG.apiBaseURL}${url}`;
     
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+    try {
+      const response = await safeFetch(fullUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers
+        },
+        body: JSON.stringify(data),
+        timeout: 15000,
+        retries: 2
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const error = new Error(`API request failed: ${response.status} ${response.statusText}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = fullUrl;
+        logger.apiError(url, error, { method: 'POST', data, errorData });
+        throw error;
+      }
+      
+      return { data: await response.json() };
+    } catch (fetchError) {
+      if (fetchError.name === 'TypeError' && fetchError.message.includes('fetch')) {
+        logger.apiError(url, fetchError, { 
+          method: 'POST', 
+          url: fullUrl,
+          issue: 'Network or CORS error',
+          data 
+        });
+        throw new Error(`Network error: Unable to connect to ${fullUrl}. Check CORS configuration.`);
+      }
+      throw fetchError;
     }
-    
-    return { data: await response.json() };
   },
   
   async get(url, options = {}) {
-    const response = await fetch(`${BUNGIE_CONFIG.apiBaseURL}${url}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
+    const fullUrl = `${BUNGIE_CONFIG.apiBaseURL}${url}`;
+    
+    try {
+      const response = await safeFetch(fullUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers
+        },
+        timeout: 15000,
+        retries: 2
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const error = new Error(`API request failed: ${response.status} ${response.statusText}`);
+        error.status = response.status;
+        error.statusText = response.statusText;
+        error.url = fullUrl;
+        logger.apiError(url, error, { method: 'GET', errorData });
+        throw error;
       }
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+      
+      return { data: await response.json() };
+    } catch (fetchError) {
+      if (fetchError.name === 'TypeError' && fetchError.message.includes('fetch')) {
+        logger.apiError(url, fetchError, { 
+          method: 'GET', 
+          url: fullUrl,
+          issue: 'Network or CORS error'
+        });
+        throw new Error(`Network error: Unable to connect to ${fullUrl}. Check CORS configuration.`);
+      }
+      throw fetchError;
     }
-    
-    return { data: await response.json() };
   }
 };
 
@@ -195,40 +240,45 @@ export class BungieAuthService {
         allCookies: document.cookie
       });
       
-      // Enhanced state validation with trimming and null checks
+      // Enhanced state validation using the new error handler
       const receivedState = state?.trim();
-      const localState = storedStateLocal?.trim();
-      const sessionState = storedStateSession?.trim();
-      const cookieState = storedStateCookie?.trim();
       
-      // Check if state matches any of the stored values (with trimming)
-      const isValidState = receivedState && (
-        receivedState === localState || 
-        receivedState === sessionState || 
-        receivedState === cookieState
-      );
-      
-      if (!isValidState) {
-        console.error('State validation failed - detailed analysis:', {
-          hasReceivedState: !!receivedState,
-          hasLocalState: !!localState,
-          hasSessionState: !!sessionState,
-          hasCookieState: !!cookieState,
-          receivedState,
-          localState,
-          sessionState,
-          cookieState,
-          anyStoredState: !!(localState || sessionState || cookieState)
+      try {
+        const validationResult = validateOAuthState(receivedState, {
+          enableFallbacks: true,
+          strictMode: false // Allow some flexibility in production
         });
         
-        // More specific error messages
-        if (!receivedState) {
-          throw new Error('Missing state parameter in OAuth callback');
+        if (!validationResult.isValid) {
+          throw new GuardianError(
+            'OAuth state validation failed',
+            ERROR_CODES.OAUTH_STATE_VALIDATION_FAILED,
+            {
+              receivedState: receivedState ? receivedState.slice(0, 8) + '...' : 'null',
+              matchedSource: validationResult.matchedSource,
+              availableSources: validationResult.validationSources
+            }
+          );
         }
-        if (!(localState || sessionState || cookieState)) {
-          throw new Error('No stored state found - OAuth session may have expired');
+        
+        logger.debug('OAuth state validation successful', {
+          matchedSource: validationResult.matchedSource,
+          availableSources: validationResult.validationSources
+        });
+        
+      } catch (error) {
+        if (error instanceof GuardianError) {
+          logger.stateValidationError(error.context);
+          throw error;
         }
-        throw new Error('Invalid state parameter - possible CSRF attack or session mismatch');
+        
+        // Handle unexpected validation errors
+        logger.stateValidationError({ error: error.message });
+        throw new GuardianError(
+          `State validation error: ${error.message}`,
+          ERROR_CODES.OAUTH_STATE_VALIDATION_FAILED,
+          { originalError: error.message }
+        );
       }
       
       // Clean up stored state from all locations
@@ -260,7 +310,11 @@ export class BungieAuthService {
       };
 
     } catch (error) {
-      console.error('Bungie OAuth callback error:', error);
+      logger.oauthError('callback processing', error, {
+        url: window.location.href,
+        hasCode: !!code,
+        hasState: !!state
+      });
       throw new Error(`Authentication failed: ${error?.message}`);
     }
   }
@@ -285,7 +339,10 @@ export class BungieAuthService {
         throw new Error('Invalid response format from token exchange API');
       }
     } catch (error) {
-      console.error('Token exchange error:', error);
+      logger.oauthError('token exchange', error, {
+        hasCode: !!code,
+        endpoint: '/bungie/oauth/token'
+      });
       throw new Error(`Token exchange failed: ${error.message}`);
     }
   }

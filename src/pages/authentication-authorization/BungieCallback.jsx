@@ -3,6 +3,8 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import BungieAuthService from '../../services/bungieAuth';
 import Icon from '../../components/AppIcon';
+import logger from '../../utils/logger';
+import { formatUserError, GuardianError, setupGlobalErrorHandling } from '../../utils/errorHandler';
 
 const BungieCallback = () => {
   const [searchParams] = useSearchParams();
@@ -12,6 +14,9 @@ const BungieCallback = () => {
   const [message, setMessage] = useState('');
 
   useEffect(() => {
+    // Setup global error handling
+    setupGlobalErrorHandling();
+    
     const processCallback = async () => {
       try {
         const code = searchParams?.get('code');
@@ -55,25 +60,18 @@ const BungieCallback = () => {
           setMessage(result?.error || 'Failed to complete authorization');
         }
       } catch (err) {
-        console.error('Callback processing error:', err);
+        logger.oauthError('callback component processing', err, {
+          url: window.location.href,
+          search: searchParams.toString(),
+          component: 'BungieCallback',
+          userAgent: navigator.userAgent,
+          timestamp: new Date().toISOString()
+        });
+        
         setStatus('error');
         
-        // Provide more specific error messages based on error type
-        let errorMessage = 'An unexpected error occurred';
-        if (err?.message) {
-          if (err.message.includes('state parameter')) {
-            errorMessage = 'Security validation failed. Please try connecting again.';
-          } else if (err.message.includes('Token exchange failed')) {
-            errorMessage = 'Failed to complete authorization with Bungie. Please try again.';
-          } else if (err.message.includes('CORS')) {
-            errorMessage = 'Connection error. Please try again in a few moments.';
-          } else if (err.message.includes('expired')) {
-            errorMessage = 'Authorization session expired. Please start the connection process again.';
-          } else {
-            errorMessage = err.message;
-          }
-        }
-        
+        // Use the new error formatter for consistent user messages
+        const errorMessage = formatUserError(err);
         setMessage(errorMessage);
       }
     };
