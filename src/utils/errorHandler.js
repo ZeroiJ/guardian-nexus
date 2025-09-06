@@ -48,10 +48,10 @@ export function validateOAuthState(receivedState, options = {}) {
   const { enableFallbacks = true, strictMode = false } = options;
   
   try {
-    // Primary validation sources
-    const localState = localStorage.getItem('oauth_state');
-    const sessionState = sessionStorage.getItem('oauth_state');
-    const cookieState = getCookieValue('oauth_state');
+    // Primary validation sources - use correct key 'bungie_oauth_state'
+    const localState = localStorage.getItem('bungie_oauth_state');
+    const sessionState = sessionStorage.getItem('bungie_oauth_state');
+    const cookieState = getCookieValue('bungie_oauth_state');
     
     // Validation logic with fallbacks
     const validationSources = [
@@ -207,11 +207,11 @@ export async function safeFetch(url, options = {}) {
  */
 export function cleanupOAuthState() {
   try {
-    localStorage.removeItem('oauth_state');
-    sessionStorage.removeItem('oauth_state');
+    localStorage.removeItem('bungie_oauth_state');
+    sessionStorage.removeItem('bungie_oauth_state');
     
     // Remove cookie
-    document.cookie = 'oauth_state=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    document.cookie = 'bungie_oauth_state=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
     
     logger.debug('OAuth state cleanup completed');
   } catch (error) {
