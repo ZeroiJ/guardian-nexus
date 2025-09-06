@@ -127,5 +127,11 @@ const logger = new Logger();
 
 export default logger;
 
-// Named exports for convenience
-export const { error, warn, info, debug, oauthError, apiError, stateValidationError } = logger;
+// Named exports for convenience - bind methods to maintain 'this' context
+export const error = logger.error.bind(logger);
+export const warn = logger.warn.bind(logger);
+export const info = logger.info.bind(logger);
+export const debug = logger.debug.bind(logger);
+export const oauthError = logger.oauthError.bind(logger);
+export const apiError = logger.apiError.bind(logger);
+export const stateValidationError = logger.stateValidationError.bind(logger);
