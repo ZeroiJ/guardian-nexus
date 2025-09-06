@@ -1,8 +1,3 @@
-/**
- * Production-safe logging utility for Guardian Nexus
- * Provides structured logging with different levels and production safety
- */
-
 const LOG_LEVELS = {
   ERROR: 0,
   WARN: 1,
@@ -10,6 +5,10 @@ const LOG_LEVELS = {
   DEBUG: 3
 };
 
+/**
+ * Production-safe logging utility for Guardian Nexus
+ * Provides structured logging with different levels and production safety
+ */
 class Logger {
   constructor() {
     this.level = this.getLogLevel();
