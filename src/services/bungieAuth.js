@@ -320,29 +320,102 @@ export class BungieAuthService {
   }
 
   /**
-   * Exchanges authorization code for access/refresh tokens
+   * Exchanges authorization code for access/refresh tokens with enhanced validation
    * @private
    */
   static async exchangeCodeForTokens(code) {
-    try {
-      const response = await apiClient.post('/bungie/oauth/token', {
-        grant_type: 'authorization_code',
-        code: code,
-        redirect_uri: BUNGIE_CONFIG.redirectURI
-      });
+    // Enhanced input validation
+    if (!code || typeof code !== 'string') {
+      throw new Error('Invalid authorization code: code must be a non-empty string');
+    }
 
-      // Backend returns {success: true, data: tokenData}
-      // apiClient wraps it in {data: ...}, so we need response.data.data
-      if (response.data && response.data.success && response.data.data) {
-        return response.data.data;
-      } else {
-        throw new Error('Invalid response format from token exchange API');
-      }
-    } catch (error) {
-      logger.oauthError('token exchange', error, {
-        hasCode: !!code,
+    // Validate code format (basic sanity check)
+    const trimmedCode = code.trim();
+    if (trimmedCode.length < 10 || trimmedCode.length > 500) {
+      throw new Error('Invalid authorization code: code length is outside expected range');
+    }
+
+    // Validate redirect URI is properly configured
+    if (!BUNGIE_CONFIG.redirectURI) {
+      throw new Error('OAuth configuration error: redirect URI not configured');
+    }
+
+    try {
+      logger.info('Initiating token exchange', {
+        codeLength: trimmedCode.length,
+        redirectURI: BUNGIE_CONFIG.redirectURI,
         endpoint: '/bungie/oauth/token'
       });
+
+      const requestPayload = {
+        grant_type: 'authorization_code',
+        code: trimmedCode,
+        redirect_uri: BUNGIE_CONFIG.redirectURI
+      };
+
+      const response = await apiClient.post('/bungie/oauth/token', requestPayload);
+
+      // Enhanced response validation
+      if (!response || !response.data) {
+        throw new Error('No response received from token exchange API');
+      }
+
+      if (!response.data.success) {
+        const errorMsg = response.data.message || response.data.error || 'Unknown error';
+        throw new Error(`Token exchange rejected: ${errorMsg}`);
+      }
+
+      if (!response.data.data) {
+        throw new Error('Invalid response format: missing token data');
+      }
+
+      // Validate token structure
+      const tokenData = response.data.data;
+      if (!tokenData.access_token || typeof tokenData.access_token !== 'string') {
+        throw new Error('Invalid token response: missing or invalid access_token');
+      }
+
+      if (!tokenData.refresh_token || typeof tokenData.refresh_token !== 'string') {
+        throw new Error('Invalid token response: missing or invalid refresh_token');
+      }
+
+      logger.info('Token exchange successful', {
+        hasAccessToken: !!tokenData.access_token,
+        hasRefreshToken: !!tokenData.refresh_token,
+        expiresIn: tokenData.expires_in
+      });
+
+      return tokenData;
+    } catch (error) {
+      // Enhanced error logging with more context
+      const errorContext = {
+        hasCode: !!code,
+        codeLength: code ? code.length : 0,
+        endpoint: '/bungie/oauth/token',
+        errorType: error.constructor.name,
+        statusCode: error.status || 'unknown'
+      };
+
+      // Check for specific 400 error patterns
+      if (error.message.includes('400') || error.status === 400) {
+        logger.error('Token exchange failed with 400 Bad Request', {
+          ...errorContext,
+          possibleCauses: [
+            'Invalid authorization code format',
+            'Expired authorization code',
+            'Mismatched redirect URI',
+            'Missing required parameters'
+          ]
+        });
+        throw new Error('Token exchange failed: Invalid or expired authorization code');
+      }
+
+      if (error.message.includes('401') || error.status === 401) {
+        logger.error('Token exchange failed with 401 Unauthorized', errorContext);
+        throw new Error('Token exchange failed: Invalid client credentials');
+      }
+
+      logger.oauthError('token exchange', error, errorContext);
       throw new Error(`Token exchange failed: ${error.message}`);
     }
   }
@@ -443,57 +516,156 @@ export class BungieAuthService {
   }
 
   /**
-   * Refreshes access token using refresh token via backend proxy
-   * @returns {Promise<boolean>} True if refresh successful
+   * Refreshes the access token using the refresh token with enhanced validation and retry logic
+   * @returns {Promise<boolean>} True if refresh was successful
    */
   static async refreshAccessToken() {
-    try {
-      const connection = await this.getBungieConnection();
-      if (!connection?.refresh_token) {
-        throw new Error('No refresh token available');
-      }
-
-      const response = await apiClient.post('/bungie/oauth/token', {
-        grant_type: 'refresh_token',
-        refresh_token: connection?.refresh_token
-      });
-
-      // Backend returns {success: true, data: tokenData}
-      // apiClient wraps it in {data: ...}, so we need response.data.data
-      let newTokens;
-      if (response.data && response.data.success && response.data.data) {
-        newTokens = response.data.data;
-      } else {
-        throw new Error('Invalid response format from token refresh API');
-      }
-      const expiresAt = new Date(Date.now() + (newTokens?.expires_in * 1000));
-
-      // Encrypt new tokens before updating in localStorage
+    let retryCount = 0;
+    const maxRetries = 2;
+    
+    while (retryCount <= maxRetries) {
       try {
-        const encryptedAccessToken = encryptToken(newTokens?.access_token);
-        const encryptedRefreshToken = newTokens?.refresh_token ? 
-          encryptToken(newTokens?.refresh_token) : 
-          encryptToken(connection?.refresh_token);
+        const connection = await this.getBungieConnection();
+        
+        // Enhanced validation of refresh token
+        if (!connection) {
+          logger.error('Token refresh failed: No connection data found');
+          return false;
+        }
+        
+        if (!connection.refresh_token) {
+          logger.error('Token refresh failed: No refresh token available');
+          return false;
+        }
 
-        const updatedConnection = {
-          ...connection,
-          access_token: encryptedAccessToken,
-          refresh_token: encryptedRefreshToken,
-          expires_at: expiresAt?.toISOString(),
-          updated_at: new Date()?.toISOString()
+        // Decrypt and validate refresh token
+        let decryptedRefreshToken;
+        try {
+          decryptedRefreshToken = decryptToken(connection.refresh_token);
+          if (!decryptedRefreshToken || typeof decryptedRefreshToken !== 'string') {
+            throw new Error('Invalid refresh token format after decryption');
+          }
+        } catch (decryptError) {
+          logger.error('Token refresh failed: Unable to decrypt refresh token', {
+            error: decryptError.message,
+            attempt: retryCount + 1
+          });
+          return false;
+        }
+
+        logger.info('Initiating token refresh', {
+          attempt: retryCount + 1,
+          maxRetries: maxRetries + 1,
+          hasRefreshToken: !!decryptedRefreshToken
+        });
+
+        const requestPayload = {
+          grant_type: 'refresh_token',
+          refresh_token: decryptedRefreshToken
         };
 
-        localStorage.setItem('bungie_connection', JSON.stringify(updatedConnection));
-      } catch (encryptionError) {
-        console.error('Token encryption failed during refresh:', encryptionError.message);
-        throw new Error('Failed to securely update tokens');
-      }
+        const response = await apiClient.post('/bungie/oauth/token', requestPayload);
 
-      return true;
-    } catch (error) {
-      console.error('Token refresh error:', error);
-      return false;
+        // Enhanced response validation
+        if (!response || !response.data) {
+          throw new Error('No response received from token refresh API');
+        }
+
+        if (!response.data.success) {
+          const errorMsg = response.data.message || response.data.error || 'Unknown error';
+          throw new Error(`Token refresh rejected: ${errorMsg}`);
+        }
+
+        if (!response.data.data) {
+          throw new Error('Invalid response format: missing token data');
+        }
+
+        const newTokens = response.data.data;
+        
+        // Validate new token structure
+        if (!newTokens.access_token || typeof newTokens.access_token !== 'string') {
+          throw new Error('Invalid refresh response: missing or invalid access_token');
+        }
+
+        const expiresIn = parseInt(newTokens.expires_in) || 3600;
+        const expiresAt = new Date(Date.now() + (expiresIn * 1000));
+
+        // Encrypt new tokens before updating in localStorage
+        try {
+          const encryptedAccessToken = encryptToken(newTokens.access_token);
+          const encryptedRefreshToken = newTokens.refresh_token ? 
+            encryptToken(newTokens.refresh_token) : 
+            connection.refresh_token; // Keep existing if no new refresh token
+
+          const updatedConnection = {
+            ...connection,
+            access_token: encryptedAccessToken,
+            refresh_token: encryptedRefreshToken,
+            expires_at: expiresAt.toISOString(),
+            updated_at: new Date().toISOString()
+          };
+
+          localStorage.setItem('bungie_connection', JSON.stringify(updatedConnection));
+          
+          logger.info('Token refresh successful', {
+            expiresAt: expiresAt.toISOString(),
+            attempt: retryCount + 1
+          });
+          
+          return true;
+        } catch (encryptionError) {
+          logger.error('Token encryption failed during refresh', {
+            error: encryptionError.message,
+            attempt: retryCount + 1
+          });
+          throw new Error('Failed to securely update tokens');
+        }
+
+      } catch (error) {
+        retryCount++;
+        
+        const errorContext = {
+          attempt: retryCount,
+          maxRetries: maxRetries + 1,
+          errorType: error.constructor.name,
+          statusCode: error.status || 'unknown'
+        };
+
+        // Handle specific error cases
+        if (error.message.includes('400') || error.status === 400) {
+          logger.error('Token refresh failed with 400 Bad Request', {
+            ...errorContext,
+            possibleCauses: [
+              'Invalid refresh token format',
+              'Expired refresh token',
+              'Missing required parameters',
+              'Token encryption/decryption issues'
+            ]
+          });
+          // Don't retry 400 errors - they indicate invalid tokens
+          return false;
+        }
+
+        if (error.message.includes('401') || error.status === 401) {
+          logger.error('Token refresh failed with 401 Unauthorized', errorContext);
+          // Don't retry 401 errors - tokens are invalid
+          return false;
+        }
+
+        if (retryCount <= maxRetries) {
+          const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 5000); // Exponential backoff
+          logger.warn(`Token refresh failed, retrying in ${delay}ms`, errorContext);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          logger.error('Token refresh failed after all retries', {
+            ...errorContext,
+            finalError: error.message
+          });
+        }
+      }
     }
+    
+    return false;
   }
 
   /**

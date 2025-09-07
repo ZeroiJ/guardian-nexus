@@ -2,6 +2,14 @@ import React from 'react';
 import Icon from '../../../components/AppIcon';
 import Button from '../../../components/ui/Button';
 
+/**
+ * Enhanced ErrorState component with comprehensive 400 error handling
+ * Provides detailed diagnostics and user-friendly error messages
+ * @param {Object} error - Error object with type, message, code, and details
+ * @param {Function} onRetry - Callback for retry action
+ * @param {Function} onGoBack - Callback for go back action
+ */
+
 const ErrorState = ({ error, onRetry, onGoBack }) => {
   const getErrorInfo = (errorType) => {
     const errorMap = {
@@ -75,6 +83,30 @@ const ErrorState = ({ error, onRetry, onGoBack }) => {
         description: 'Please wait a moment before trying again.',
         color: 'text-amber-600',
         bgColor: 'bg-amber-100',
+        canRetry: true
+      },
+      'bad_request': {
+        icon: 'AlertTriangle',
+        title: 'Invalid Request',
+        description: 'The request contains invalid data or parameters.',
+        color: 'text-red-600',
+        bgColor: 'bg-red-100',
+        canRetry: true
+      },
+      'token_invalid': {
+        icon: 'Key',
+        title: 'Token Issue',
+        description: 'Your authentication token is invalid or expired.',
+        color: 'text-amber-600',
+        bgColor: 'bg-amber-100',
+        canRetry: true
+      },
+      'validation_error': {
+        icon: 'XCircle',
+        title: 'Validation Failed',
+        description: 'The provided information does not meet requirements.',
+        color: 'text-red-600',
+        bgColor: 'bg-red-100',
         canRetry: true
       },
       'unsupported_platform': {
@@ -182,6 +214,37 @@ const ErrorState = ({ error, onRetry, onGoBack }) => {
           <div className="mt-4 p-3 bg-amber-50 rounded-lg">
             <p className="text-xs text-amber-700">
               <strong>Tip:</strong> Please wait 5-10 minutes before attempting to connect again.
+            </p>
+          </div>
+        )}
+
+        {error?.type === 'bad_request' && (
+          <div className="mt-4 p-3 bg-red-50 rounded-lg">
+            <div className="text-xs text-red-700 space-y-1">
+              <p><strong>Common causes:</strong></p>
+              <ul className="list-disc list-inside ml-2 space-y-1">
+                {error?.details?.invalidToken && <li>Invalid or expired authentication token</li>}
+                {error?.details?.invalidMembership && <li>Invalid membership type or ID format</li>}
+                {error?.details?.missingParams && <li>Required parameters are missing</li>}
+                {error?.details?.invalidFormat && <li>Data format doesn't match requirements</li>}
+                {!error?.details && <li>Request parameters may be incorrect or malformed</li>}
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {error?.type === 'token_invalid' && (
+          <div className="mt-4 p-3 bg-amber-50 rounded-lg">
+            <p className="text-xs text-amber-700">
+              <strong>Tip:</strong> Try logging out and logging back in to refresh your authentication.
+            </p>
+          </div>
+        )}
+
+        {error?.type === 'validation_error' && (
+          <div className="mt-4 p-3 bg-red-50 rounded-lg">
+            <p className="text-xs text-red-700">
+              <strong>Tip:</strong> Please check that all required fields are filled correctly and try again.
             </p>
           </div>
         )}

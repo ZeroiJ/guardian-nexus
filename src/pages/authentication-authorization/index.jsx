@@ -89,11 +89,33 @@ const AuthenticationAuthorization = () => {
       // Initiate Bungie OAuth
       await signInWithBungie();
     } catch (err) {
+      // Enhanced error categorization for authentication initiation
+      let errorType = 'auth_initiation_failed';
+      let errorMessage = err?.message || 'Failed to start authentication process';
+      
+      // Check for specific error patterns
+      const errMsg = err?.message?.toLowerCase() || '';
+      if (errMsg.includes('400') || errMsg.includes('bad request')) {
+        errorType = 'bad_request';
+        errorMessage = 'Invalid authentication request. Please try again.';
+      } else if (errMsg.includes('network') || errMsg.includes('fetch')) {
+        errorType = 'network';
+        errorMessage = 'Connection failed. Please check your internet connection.';
+      } else if (errMsg.includes('blocked') || errMsg.includes('popup')) {
+        errorType = 'popup_blocked';
+        errorMessage = 'Popup was blocked. Please allow popups and try again.';
+      }
+      
       setError({
-        type: 'auth_initiation_failed',
-        code: 'BNG-INIT',
-        message: err?.message || 'Failed to start authentication process',
-        timestamp: new Date()?.toISOString()
+        type: errorType,
+        code: err?.code || err?.status || 'BNG-INIT',
+        message: errorMessage,
+        timestamp: new Date().toISOString(),
+        details: {
+          invalidParams: errMsg.includes('400') || errMsg.includes('bad request'),
+          networkIssue: errMsg.includes('network') || errMsg.includes('fetch'),
+          popupBlocked: errMsg.includes('blocked') || errMsg.includes('popup')
+        }
       });
       setAuthState('error');
     }
@@ -122,6 +144,14 @@ const AuthenticationAuthorization = () => {
       if (rememberMe) {
         navigate('/dashboard');
       }
+    }
+    
+    // Check for callback error context
+    if (window.__CALLBACK_ERROR__) {
+      setError(window.__CALLBACK_ERROR__);
+      setAuthState('error');
+      // Clean up the error context
+      delete window.__CALLBACK_ERROR__;
     }
   }, [bungieConnection, loading, navigate]);
 

@@ -70,9 +70,60 @@ const BungieCallback = () => {
         
         setStatus('error');
         
-        // Use the new error formatter for consistent user messages
-        const errorMessage = formatUserError(err);
+        // Enhanced error categorization for better user experience
+        let errorType = 'callback_error';
+        let errorMessage = formatUserError(err);
+        
+        if (err instanceof GuardianError) {
+          switch (err.code) {
+            case 'BAD_REQUEST':
+              errorType = 'bad_request';
+              errorMessage = 'Invalid authorization parameters. Please try connecting again.';
+              break;
+            case 'UNAUTHORIZED':
+              errorType = 'auth_failed';
+              errorMessage = 'Authorization was denied or expired. Please try again.';
+              break;
+            case 'FORBIDDEN':
+              errorType = 'account_restricted';
+              errorMessage = 'Your account may have restricted API access.';
+              break;
+            case 'RATE_LIMITED':
+              errorType = 'rate_limit';
+              errorMessage = 'Too many connection attempts. Please wait a moment.';
+              break;
+            case 'NETWORK_ERROR':
+              errorType = 'network';
+              errorMessage = 'Connection failed. Please check your internet connection.';
+              break;
+          }
+        } else {
+          // Check for common 400 error patterns
+          const errMsg = err?.message?.toLowerCase() || '';
+          if (errMsg.includes('400') || errMsg.includes('bad request')) {
+            errorType = 'bad_request';
+            errorMessage = 'Invalid request data. Please try connecting again.';
+          } else if (errMsg.includes('token') || errMsg.includes('invalid_grant')) {
+            errorType = 'token_invalid';
+            errorMessage = 'Authorization code expired. Please try connecting again.';
+          }
+        }
+        
+        // Store error details for ErrorState component
         setMessage(errorMessage);
+        
+        // Store additional error context
+        window.__CALLBACK_ERROR__ = {
+          type: errorType,
+          message: errorMessage,
+          code: err?.code || err?.status,
+          timestamp: Date.now(),
+          details: {
+            invalidToken: errMsg.includes('token') || errMsg.includes('invalid_grant'),
+            invalidParams: errMsg.includes('400') || errMsg.includes('bad request'),
+            networkIssue: errMsg.includes('network') || errMsg.includes('fetch')
+          }
+        };
       }
     };
 

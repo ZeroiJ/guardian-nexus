@@ -125,7 +125,7 @@ export function validateOAuthState(receivedState, options = {}) {
 }
 
 /**
- * Enhanced fetch wrapper with retry logic and error handling
+ * Enhanced fetch wrapper with retry logic, error handling, and 400 error diagnostics
  */
 export async function safeFetch(url, options = {}) {
   const {
@@ -143,6 +143,15 @@ export async function safeFetch(url, options = {}) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeout);
       
+      logger.debug('Making HTTP request', {
+        url,
+        method: fetchOptions.method || 'GET',
+        attempt: attempt + 1,
+        maxAttempts: retries + 1,
+        hasBody: !!fetchOptions.body,
+        headers: fetchOptions.headers ? Object.keys(fetchOptions.headers) : []
+      });
+      
       const response = await fetch(url, {
         ...fetchOptions,
         signal: controller.signal
@@ -151,19 +160,105 @@ export async function safeFetch(url, options = {}) {
       clearTimeout(timeoutId);
       
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new GuardianError(
-          `HTTP ${response.status}: ${response.statusText}`,
-          response.status >= 500 ? ERROR_CODES.API_SERVER_ERROR : ERROR_CODES.API_NETWORK_ERROR,
-          {
+        let errorData;
+        let errorText = '';
+        
+        try {
+          errorText = await response.text();
+          // Try to parse as JSON first
+          try {
+            errorData = JSON.parse(errorText);
+          } catch {
+            // If not JSON, use the text as is
+            errorData = { message: errorText };
+          }
+        } catch (parseError) {
+          errorData = { message: 'Unable to parse error response' };
+          logger.warn('Failed to parse error response', {
             url,
+            status: response.status,
+            parseError: parseError.message
+          });
+        }
+
+        // Enhanced 400 error handling with detailed diagnostics
+        if (response.status === 400) {
+          const diagnostics = {
+            url,
+            method: fetchOptions.method || 'GET',
             status: response.status,
             statusText: response.statusText,
             errorData,
+            requestHeaders: fetchOptions.headers || {},
             attempt: attempt + 1
+          };
+
+          // Analyze request body for common 400 issues
+          if (fetchOptions.body) {
+            try {
+              const bodyData = typeof fetchOptions.body === 'string' ? 
+                JSON.parse(fetchOptions.body) : fetchOptions.body;
+              diagnostics.requestBody = bodyData;
+              
+              // Check for common 400 causes
+              const possibleCauses = [];
+              
+              if (bodyData.grant_type === 'authorization_code' && !bodyData.code) {
+                possibleCauses.push('Missing authorization code');
+              }
+              if (bodyData.grant_type === 'refresh_token' && !bodyData.refresh_token) {
+                possibleCauses.push('Missing refresh token');
+              }
+              if (bodyData.grant_type && !['authorization_code', 'refresh_token'].includes(bodyData.grant_type)) {
+                possibleCauses.push('Invalid grant_type');
+              }
+              
+              diagnostics.possibleCauses = possibleCauses;
+            } catch (bodyParseError) {
+              diagnostics.bodyParseError = bodyParseError.message;
+            }
           }
+
+          logger.error('HTTP 400 Bad Request - Detailed diagnostics', diagnostics);
+          
+          throw new GuardianError(
+            `HTTP 400 Bad Request: ${errorData.message || response.statusText}`,
+            ERROR_CODES.API_NETWORK_ERROR,
+            diagnostics
+          );
+        }
+        
+        // Handle other HTTP errors with enhanced logging
+        const errorContext = {
+          url,
+          status: response.status,
+          statusText: response.statusText,
+          errorData,
+          attempt: attempt + 1
+        };
+        
+        if (response.status === 401) {
+          logger.error('HTTP 401 Unauthorized', errorContext);
+        } else if (response.status === 403) {
+          logger.error('HTTP 403 Forbidden', errorContext);
+        } else if (response.status >= 500) {
+          logger.error('HTTP Server Error', errorContext);
+        } else {
+          logger.error('HTTP Client Error', errorContext);
+        }
+        
+        throw new GuardianError(
+          `HTTP ${response.status}: ${errorData.message || response.statusText}`,
+          response.status >= 500 ? ERROR_CODES.API_SERVER_ERROR : ERROR_CODES.API_NETWORK_ERROR,
+          errorContext
         );
       }
+      
+      logger.debug('HTTP request successful', {
+        url,
+        status: response.status,
+        attempt: attempt + 1
+      });
       
       return response;
       
@@ -172,6 +267,7 @@ export async function safeFetch(url, options = {}) {
       
       // Handle different types of errors
       if (error.name === 'AbortError') {
+        logger.error('Request timeout', { url, timeout, attempt: attempt + 1 });
         lastError = new GuardianError(
           `Request timeout after ${timeout}ms`,
           ERROR_CODES.API_TIMEOUT_ERROR,
@@ -187,16 +283,44 @@ export async function safeFetch(url, options = {}) {
       
       // Don't retry on certain errors
       if (error instanceof GuardianError && 
-          [ERROR_CODES.API_CORS_ERROR, ERROR_CODES.OAUTH_STATE_VALIDATION_FAILED].includes(error.code)) {
+          ([ERROR_CODES.API_CORS_ERROR, ERROR_CODES.OAUTH_STATE_VALIDATION_FAILED].includes(error.code) ||
+           (error.context?.status === 400 || error.context?.status === 401))) {
+        logger.error('Non-retryable error encountered', {
+          error: error.message,
+          type: error.constructor.name,
+          status: error.context?.status,
+          attempt: attempt + 1
+        });
         break;
       }
       
       // Wait before retry (except on last attempt)
       if (attempt < retries) {
-        await new Promise(resolve => setTimeout(resolve, retryDelay * (attempt + 1)));
-        logger.warn(`Retrying request (${attempt + 1}/${retries})`, { url, error: error.message });
+        const delay = retryDelay * (attempt + 1);
+        logger.warn(`Request failed, retrying in ${delay}ms`, {
+          url,
+          error: error.message,
+          attempt: attempt + 1,
+          nextAttempt: attempt + 2,
+          delay
+        });
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
+  }
+  
+  if (lastError instanceof GuardianError) {
+    logger.error('Final attempt failed', {
+      error: lastError.message,
+      context: lastError.context,
+      totalAttempts: retries + 1
+    });
+  } else {
+    logger.error('Network error after all retries', {
+      error: lastError?.message,
+      url,
+      totalAttempts: retries + 1
+    });
   }
   
   throw lastError;

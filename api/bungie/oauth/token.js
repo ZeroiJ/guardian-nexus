@@ -43,24 +43,73 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { code, refresh_token, grant_type = 'authorization_code' } = req.body;
+    const { code, refresh_token, redirect_uri, grant_type = 'authorization_code' } = req.body;
 
-    // Validate grant type
-    if (typeof grant_type !== 'string' || !['authorization_code', 'refresh_token'].includes(grant_type)) {
+    // Enhanced validation of environment variables
+    const requiredEnvVars = {
+      BUNGIE_CLIENT_ID: process.env.BUNGIE_CLIENT_ID,
+      BUNGIE_CLIENT_SECRET: process.env.BUNGIE_CLIENT_SECRET,
+      BUNGIE_REDIRECT_URI: process.env.BUNGIE_REDIRECT_URI
+    };
+
+    const missingEnvVars = Object.entries(requiredEnvVars)
+      .filter(([key, value]) => !value)
+      .map(([key]) => key);
+
+    if (missingEnvVars.length > 0) {
+      console.error('Missing required environment variables:', missingEnvVars);
+      return res.status(500).json({
+        success: false,
+        error: 'Server configuration error: Missing required environment variables',
+        details: { missingVars: missingEnvVars }
+      });
+    }
+
+    // Enhanced grant type validation
+    const validGrantTypes = ['authorization_code', 'refresh_token'];
+    if (!validGrantTypes.includes(grant_type)) {
+      console.error('Invalid grant_type provided:', {
+        provided: grant_type,
+        valid: validGrantTypes
+      });
       return res.status(400).json({
-        error: 'Bad Request',
-        message: 'Invalid grant type. Must be authorization_code or refresh_token'
+        success: false,
+        error: 'Invalid grant_type',
+        details: {
+          provided: grant_type,
+          valid: validGrantTypes
+        }
       });
     }
 
     let formData;
     
     if (grant_type === 'authorization_code') {
-      // Input validation and sanitization for authorization code
-      if (!code || typeof code !== 'string') {
+      if (!code) {
+        console.error('Missing authorization code for authorization_code grant');
         return res.status(400).json({
-          error: 'Bad Request',
-          message: 'Valid authorization code is required'
+          success: false,
+          error: 'Authorization code is required for authorization_code grant',
+          details: {
+            grant_type,
+            missing_parameter: 'code'
+          }
+        });
+      }
+
+      // Validate authorization code format (should be a reasonable length string)
+      if (typeof code !== 'string' || code.length < 10 || code.length > 500) {
+        console.error('Invalid authorization code format:', {
+          codeType: typeof code,
+          codeLength: code ? code.length : 0
+        });
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid authorization code format',
+          details: {
+            expected: 'String between 10-500 characters',
+            received: `${typeof code} of length ${code ? code.length : 0}`
+          }
         });
       }
 
@@ -74,18 +123,48 @@ export default async function handler(req, res) {
         });
       }
 
+      const redirectUri = redirect_uri || process.env.BUNGIE_REDIRECT_URI;
+      if (!redirectUri) {
+        console.error('Missing redirect_uri for authorization_code grant');
+        return res.status(400).json({
+          success: false,
+          error: 'Redirect URI is required for authorization_code grant'
+        });
+      }
+
       formData = new URLSearchParams({
         grant_type,
         code: sanitizedCode,
+        redirect_uri: redirectUri,
         client_id: BUNGIE_CONFIG.clientId,
         client_secret: BUNGIE_CONFIG.clientSecret
       });
     } else if (grant_type === 'refresh_token') {
-      // Input validation and sanitization for refresh token
-      if (!refresh_token || typeof refresh_token !== 'string') {
+      if (!refresh_token) {
+        console.error('Missing refresh_token for refresh_token grant');
         return res.status(400).json({
-          error: 'Bad Request',
-          message: 'Valid refresh token is required'
+          success: false,
+          error: 'Refresh token is required for refresh_token grant',
+          details: {
+            grant_type,
+            missing_parameter: 'refresh_token'
+          }
+        });
+      }
+
+      // Validate refresh token format
+      if (typeof refresh_token !== 'string' || refresh_token.length < 20) {
+        console.error('Invalid refresh_token format:', {
+          tokenType: typeof refresh_token,
+          tokenLength: refresh_token ? refresh_token.length : 0
+        });
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid refresh token format',
+          details: {
+            expected: 'String with minimum 20 characters',
+            received: `${typeof refresh_token} of length ${refresh_token ? refresh_token.length : 0}`
+          }
         });
       }
 
@@ -107,21 +186,103 @@ export default async function handler(req, res) {
       });
     }
 
+    console.log('Token exchange request initiated:', {
+      grant_type,
+      has_code: !!code,
+      has_refresh_token: !!refresh_token,
+      redirect_uri: redirect_uri || process.env.BUNGIE_REDIRECT_URI,
+      client_id_present: !!process.env.BUNGIE_CLIENT_ID,
+      timestamp: new Date().toISOString()
+    });
+
+    // Make request to Bungie's token endpoint with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+
     const tokenResponse = await fetch(BUNGIE_CONFIG.tokenURL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'X-API-Key': BUNGIE_CONFIG.apiKey
+        'X-API-Key': BUNGIE_CONFIG.apiKey,
+        'User-Agent': 'Guardian-Nexus/1.0',
+        'Accept': 'application/json'
       },
-      body: formData
+      body: formData,
+      signal: controller.signal
     });
 
+    clearTimeout(timeoutId);
+
+    // Enhanced error handling for different response codes
     if (!tokenResponse.ok) {
-      const errorData = await tokenResponse.json().catch(() => ({}));
+      let errorText = '';
+      let errorData = {};
+      
+      try {
+        errorText = await tokenResponse.text();
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { message: errorText };
+        }
+      } catch (readError) {
+        console.error('Failed to read error response:', readError.message);
+        errorData = { message: 'Unable to read error response' };
+      }
+
+      const errorContext = {
+        status: tokenResponse.status,
+        statusText: tokenResponse.statusText,
+        grant_type,
+        has_code: !!code,
+        has_refresh_token: !!refresh_token,
+        errorData,
+        timestamp: new Date().toISOString()
+      };
+
+      console.error('Bungie token exchange failed:', errorContext);
+
+      // Handle specific error cases
+      if (tokenResponse.status === 400) {
+        return res.status(400).json({
+          success: false,
+          error: 'Bad Request: Invalid token exchange parameters',
+          details: {
+            bungieError: errorData,
+            possibleCauses: [
+              'Invalid or expired authorization code',
+              'Invalid refresh token',
+              'Incorrect redirect_uri',
+              'Invalid client credentials',
+              'Malformed request parameters'
+            ]
+          }
+        });
+      }
+
+      if (tokenResponse.status === 401) {
+        return res.status(401).json({
+          success: false,
+          error: 'Unauthorized: Invalid client credentials',
+          details: {
+            bungieError: errorData,
+            suggestion: 'Verify BUNGIE_CLIENT_ID and BUNGIE_CLIENT_SECRET configuration'
+          }
+        });
+      }
+      
       throw new Error(`Token exchange failed: ${tokenResponse.status} ${tokenResponse.statusText}`);
     }
 
     const tokenData = await tokenResponse.json();
+    
+    console.log('Token exchange response received:', {
+      has_access_token: !!tokenData.access_token,
+      has_refresh_token: !!tokenData.refresh_token,
+      expires_in: tokenData.expires_in,
+      token_type: tokenData.token_type,
+      timestamp: new Date().toISOString()
+    });
 
     // Validate and sanitize token response
     if (!tokenData.access_token || typeof tokenData.access_token !== 'string') {
