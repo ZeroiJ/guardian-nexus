@@ -117,6 +117,38 @@ const ErrorState = ({ error, onRetry, onGoBack }) => {
         bgColor: 'bg-amber-100',
         canRetry: false
       },
+      'state_validation_failed': {
+        icon: 'ShieldAlert',
+        title: 'Security Validation Failed',
+        description: 'The authentication process was interrupted or took too long. This is a security measure to protect your account.',
+        color: 'text-amber-600',
+        bgColor: 'bg-amber-100',
+        canRetry: true
+      },
+      'token_exchange_failed': {
+        icon: 'KeyRound',
+        title: 'Authentication Expired',
+        description: 'The authorization code has expired. Please start the authentication process again.',
+        color: 'text-amber-600',
+        bgColor: 'bg-amber-100',
+        canRetry: true
+      },
+      'callback_processing_failed': {
+        icon: 'AlertCircle',
+        title: 'Processing Failed',
+        description: 'There was an error processing your authentication. Please try again.',
+        color: 'text-red-600',
+        bgColor: 'bg-red-100',
+        canRetry: true
+      },
+      'initiation_failed': {
+        icon: 'Settings',
+        title: 'Setup Issue',
+        description: 'Failed to start authentication. Please check your browser settings and allow popups.',
+        color: 'text-amber-600',
+        bgColor: 'bg-amber-100',
+        canRetry: true
+      },
       'default': {
         icon: 'AlertCircle',
         title: 'Something went wrong',
@@ -162,15 +194,47 @@ const ErrorState = ({ error, onRetry, onGoBack }) => {
           </div>
         )}
 
+        {/* Recovery Suggestions */}
+        {error?.recoveryActions && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 text-left">
+            <h3 className="text-sm font-medium text-blue-900 mb-2">💡 What you can do:</h3>
+            <ul className="space-y-1 text-xs text-blue-800">
+              {error.recoveryActions.clearState && (
+                <li>• Authentication state has been cleared for a fresh start</li>
+              )}
+              {error.recoveryActions.waitBeforeRetry && (
+                <li>• Wait a moment before trying again to avoid rate limits</li>
+              )}
+              {error.type === 'state_validation_failed' && (
+                <li>• Make sure to complete the authentication process without switching tabs</li>
+              )}
+              {error.type === 'initiation_failed' && (
+                <li>• Enable popups for this site in your browser settings</li>
+              )}
+              {error.details?.networkIssue && (
+                <li>• Check your internet connection and try again</li>
+              )}
+            </ul>
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div className="space-y-3">
           {errorInfo?.canRetry && (
             <Button
-              onClick={onRetry}
+              onClick={() => {
+                // Add delay for rate-limited errors
+                if (error?.recoveryActions?.waitBeforeRetry) {
+                  setTimeout(onRetry, 2000);
+                } else {
+                  onRetry();
+                }
+              }}
               className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
+              disabled={error?.recoveryActions?.waitBeforeRetry}
             >
               <Icon name="RotateCcw" size={16} className="mr-2" />
-              Try Again
+              {error?.recoveryActions?.waitBeforeRetry ? 'Please wait...' : 'Try Again'}
             </Button>
           )}
           

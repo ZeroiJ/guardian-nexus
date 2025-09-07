@@ -70,36 +70,67 @@ const BungieCallback = () => {
         
         setStatus('error');
         
-        // Enhanced error categorization for better user experience
+        // Enhanced error categorization with recovery mechanisms
         let errorType = 'callback_error';
         let errorMessage = formatUserError(err);
+        let canRetry = true;
+        let shouldClearState = false;
         
         if (err instanceof GuardianError) {
           switch (err.code) {
             case 'BAD_REQUEST':
               errorType = 'bad_request';
               errorMessage = 'Invalid authorization parameters. Please try connecting again.';
+              shouldClearState = true;
               break;
             case 'UNAUTHORIZED':
               errorType = 'auth_failed';
               errorMessage = 'Authorization was denied or expired. Please try again.';
+              shouldClearState = true;
               break;
             case 'FORBIDDEN':
               errorType = 'account_restricted';
               errorMessage = 'Your account may have restricted API access.';
+              canRetry = false;
               break;
             case 'RATE_LIMITED':
               errorType = 'rate_limit';
-              errorMessage = 'Too many connection attempts. Please wait a moment.';
+              errorMessage = 'Too many connection attempts. Please wait a moment before retrying.';
+              canRetry = true;
               break;
             case 'NETWORK_ERROR':
               errorType = 'network';
               errorMessage = 'Connection failed. Please check your internet connection.';
+              canRetry = true;
+              break;
+            case 'OAUTH_STATE_VALIDATION_FAILED':
+              errorType = 'state_validation_failed';
+              errorMessage = 'Security validation failed. This usually happens when the authentication process is interrupted or takes too long.';
+              shouldClearState = true;
+              canRetry = true;
+              break;
+            case 'OAUTH_TOKEN_EXCHANGE_FAILED':
+              errorType = 'token_exchange_failed';
+              errorMessage = 'Failed to complete authentication. The authorization code may have expired.';
+              shouldClearState = true;
+              canRetry = true;
+              break;
+            case 'OAUTH_CALLBACK_PROCESSING_FAILED':
+              errorType = 'callback_processing_failed';
+              errorMessage = 'Authentication processing failed. Please try again.';
+              canRetry = true;
+              break;
+            case 'OAUTH_INITIATION_FAILED':
+              errorType = 'initiation_failed';
+              errorMessage = 'Failed to start authentication process. Please check your browser settings.';
+              canRetry = true;
               break;
           }
-        } else {
-          // Check for common 400 error patterns
-          const errMsg = err?.message?.toLowerCase() || '';
+        }
+        
+        // Check for common error patterns (moved outside to fix scope issue)
+        const errMsg = err?.message?.toLowerCase() || '';
+        if (!errorType || errorType === 'unknown') {
           if (errMsg.includes('400') || errMsg.includes('bad request')) {
             errorType = 'bad_request';
             errorMessage = 'Invalid request data. Please try connecting again.';
@@ -112,16 +143,36 @@ const BungieCallback = () => {
         // Store error details for ErrorState component
         setMessage(errorMessage);
         
-        // Store additional error context
+        // Clear OAuth state if needed for fresh retry
+        if (shouldClearState) {
+          try {
+            localStorage.removeItem('oauth_state');
+            localStorage.removeItem('oauth_code_verifier');
+            sessionStorage.removeItem('bungie_auth_redirect');
+          } catch (clearError) {
+            console.warn('Failed to clear OAuth state:', clearError);
+          }
+        }
+        
+        // Store enhanced error context with recovery information
         window.__CALLBACK_ERROR__ = {
           type: errorType,
           message: errorMessage,
           code: err?.code || err?.status,
           timestamp: Date.now(),
+          canRetry,
+          shouldClearState,
           details: {
             invalidToken: errMsg.includes('token') || errMsg.includes('invalid_grant'),
             invalidParams: errMsg.includes('400') || errMsg.includes('bad request'),
-            networkIssue: errMsg.includes('network') || errMsg.includes('fetch')
+            networkIssue: errMsg.includes('network') || errMsg.includes('fetch'),
+            stateValidationFailed: errorType === 'state_validation_failed',
+            tokenExchangeFailed: errorType === 'token_exchange_failed'
+          },
+          recoveryActions: {
+            clearState: shouldClearState,
+            retryRecommended: canRetry,
+            waitBeforeRetry: errorType === 'rate_limit'
           }
         };
       }

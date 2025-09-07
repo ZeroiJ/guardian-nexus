@@ -105,46 +105,85 @@ const apiClient = {
  */
 export class BungieAuthService {
   /**
+   * Generates a cryptographically secure random state for OAuth
+   * @private
+   */
+  static generateOAuthState() {
+    // Use crypto.randomUUID() if available, otherwise fallback to secure alternative
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    
+    // Fallback: Generate secure random state using crypto.getRandomValues
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      const array = new Uint8Array(16);
+      crypto.getRandomValues(array);
+      return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+    }
+    
+    // Final fallback: Use Math.random with timestamp (less secure but functional)
+    console.warn('Using fallback random state generation - less secure');
+    return Date.now().toString(36) + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  }
+
+  /**
    * Initiates the Bungie OAuth flow by redirecting to Bungie's authorization page
    */
   static initiateOAuth() {
-    // Generate a random state parameter for CSRF protection
-    const generatedState = crypto.randomUUID();
+    try {
+      // Generate a random state parameter for CSRF protection
+      const generatedState = this.generateOAuthState();
+      
+      if (!generatedState) {
+        throw new Error('Failed to generate OAuth state');
+      }
+      
+      // Store state in both localStorage and sessionStorage for redundancy
+      localStorage.setItem('bungie_oauth_state', generatedState);
+      sessionStorage.setItem('bungie_oauth_state', generatedState);
+      
+      // Also store in a cookie as backup (expires in 10 minutes)
+      document.cookie = `bungie_oauth_state=${generatedState}; max-age=600; path=/; SameSite=Lax`;
     
-    // Store state in both localStorage and sessionStorage for redundancy
-    localStorage.setItem('bungie_oauth_state', generatedState);
-    sessionStorage.setItem('bungie_oauth_state', generatedState);
-    
-    // Also store in a cookie as backup (expires in 10 minutes)
-    document.cookie = `bungie_oauth_state=${generatedState}; max-age=600; path=/; SameSite=Lax`;
-    
-    // Enhanced debug logging
-    const storedStateLocal = localStorage.getItem('bungie_oauth_state');
-    const storedStateSession = sessionStorage.getItem('bungie_oauth_state');
-    console.log('OAuth Initiation Debug - Enhanced:', {
-      generatedState,
-      generatedStateLength: generatedState?.length,
-      storedStateLocal,
-      storedStateLocalLength: storedStateLocal?.length,
-      storedStateSession,
-      storedStateSessionLength: storedStateSession?.length,
-      localStorageWorking: storedStateLocal === generatedState,
-      sessionStorageWorking: storedStateSession === generatedState,
-      currentOrigin: window.location.origin,
-      redirectURI: BUNGIE_CONFIG.redirectURI,
-      cookieSet: document.cookie.includes('bungie_oauth_state'),
-      timestamp: new Date().toISOString()
-    });
-    
-    // Construct authorization URL
-    const authURL = new URL(BUNGIE_CONFIG.authURL);
-    authURL.searchParams.append('client_id', BUNGIE_CONFIG.clientId);
-    authURL.searchParams.append('response_type', 'code');
-    authURL.searchParams.append('redirect_uri', BUNGIE_CONFIG.redirectURI);
-    authURL.searchParams.append('state', generatedState);
-    
-    // Redirect to Bungie OAuth
-    window.location.href = authURL.toString();
+      // Enhanced debug logging
+      const storedStateLocal = localStorage.getItem('bungie_oauth_state');
+      const storedStateSession = sessionStorage.getItem('bungie_oauth_state');
+      console.log('OAuth Initiation Debug - Enhanced:', {
+        generatedState,
+        generatedStateLength: generatedState?.length,
+        storedStateLocal,
+        storedStateLocalLength: storedStateLocal?.length,
+        storedStateSession,
+        storedStateSessionLength: storedStateSession?.length,
+        localStorageWorking: storedStateLocal === generatedState,
+        sessionStorageWorking: storedStateSession === generatedState,
+        currentOrigin: window.location.origin,
+        redirectURI: BUNGIE_CONFIG.redirectURI,
+        cookieSet: document.cookie.includes('bungie_oauth_state'),
+        timestamp: new Date().toISOString()
+      });
+      
+      // Construct authorization URL
+      const authURL = new URL(BUNGIE_CONFIG.authURL);
+      authURL.searchParams.append('client_id', BUNGIE_CONFIG.clientId);
+      authURL.searchParams.append('response_type', 'code');
+      authURL.searchParams.append('redirect_uri', BUNGIE_CONFIG.redirectURI);
+      authURL.searchParams.append('state', generatedState);
+      
+      // Redirect to Bungie OAuth
+      window.location.href = authURL.toString();
+    } catch (error) {
+      logger.error('Failed to initiate OAuth flow', {
+        error: error.message,
+        stack: error.stack
+      });
+      
+      throw new GuardianError(
+        'Failed to start authentication process',
+        ERROR_CODES.OAUTH_INITIATION_FAILED,
+        { originalError: error.message }
+      );
+    }
   }
 
   /**
