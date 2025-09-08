@@ -1,42 +1,38 @@
 {
   "version": 2,
-  "buildCommand": "npm run build",
-  "outputDirectory": "build",
-  "git": {
-    "deploymentEnabled": {
-      "master": true
+  "name": "guardian-nexus",
+  "builds": [
+    {
+      "src": "api/**/*.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "public/**/*",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/public/$1"
+    }
+  ],
+  "functions": {
+    "api/**/*.js": {
+      "maxDuration": 30
     }
   },
   "env": {
-    "NODE_ENV": "production"
+    "BUNGIE_API_KEY": "@bungie-api-key",
+    "BUNGIE_CLIENT_ID": "@bungie-client-id",
+    "BUNGIE_CLIENT_SECRET": "@bungie-client-secret",
+    "BUNGIE_OAUTH_REDIRECT_URI": "@bungie-oauth-redirect-uri"
   },
-
   "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        {
-          "key": "X-Content-Type-Options",
-          "value": "nosniff"
-        },
-        {
-          "key": "X-Frame-Options",
-          "value": "DENY"
-        },
-        {
-          "key": "X-XSS-Protection",
-          "value": "1; mode=block"
-        },
-        {
-          "key": "Referrer-Policy",
-          "value": "strict-origin-when-cross-origin"
-        },
-        {
-          "key": "Strict-Transport-Security",
-          "value": "max-age=31536000; includeSubDomains; preload"
-        }
-      ]
-    },
     {
       "source": "/api/(.*)",
       "headers": [
@@ -50,60 +46,35 @@
         },
         {
           "key": "Access-Control-Allow-Headers",
-          "value": "Content-Type, Authorization"
+          "value": "Content-Type, Authorization, X-API-Key"
         },
         {
-          "key": "Access-Control-Allow-Credentials",
-          "value": "true"
-        },
-        {
-          "key": "Cache-Control",
-          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
-        },
-        {
-          "key": "Pragma",
-          "value": "no-cache"
-        },
-        {
-          "key": "Expires",
-          "value": "0"
-        }
-      ]
-    },
-    {
-      "source": "/static/(.*)",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=31536000, immutable"
+          "key": "Access-Control-Max-Age",
+          "value": "86400"
         }
       ]
     }
   ],
   "rewrites": [
     {
-      "source": "/api/bungie/oauth/token",
-      "destination": "/api/bungie/oauth/token.js"
+      "source": "/api/auth/token",
+      "destination": "/api/auth/token.js"
     },
     {
-      "source": "/api/bungie/user/profile",
-      "destination": "/api/bungie/user/profile.js"
+      "source": "/api/auth/memberships",
+      "destination": "/api/auth/memberships.js"
     },
     {
-      "source": "/api/bungie/user/memberships",
-      "destination": "/api/bungie/user/memberships.js"
+      "source": "/api/destiny2/profile",
+      "destination": "/api/destiny2/profile.js"
     },
     {
-      "source": "/api/destiny2/profile/:membershipType/:membershipId",
-      "destination": "/api/destiny2/profile/[membershipType]/[membershipId].js"
+      "source": "/api/destiny2/character",
+      "destination": "/api/destiny2/character.js"
     },
     {
-      "source": "/api/manifest/info",
-      "destination": "/api/manifest/info.js"
-    },
-    {
-      "source": "/((?!api).*)",
-      "destination": "/index.html"
+      "source": "/api/destiny2/manifest",
+      "destination": "/api/destiny2/manifest.js"
     }
   ]
 }
