@@ -43,6 +43,30 @@ export const ERROR_CODES = {
 };
 
 /**
+ * Parse stored state data (handles both old string format and new JSON format)
+ */
+function parseStoredState(storedValue) {
+  if (!storedValue) return null;
+  
+  try {
+    // Try to parse as JSON (new format with timestamp)
+    const parsed = JSON.parse(decodeURIComponent(storedValue));
+    if (parsed.state && parsed.timestamp && parsed.expires) {
+      return parsed;
+    }
+  } catch {
+    // If parsing fails, treat as old format (plain state string)
+    return {
+      state: storedValue,
+      timestamp: Date.now() - (5 * 60 * 1000), // Assume 5 minutes old
+      expires: Date.now() + (10 * 60 * 1000) // Give 10 more minutes
+    };
+  }
+  
+  return null;
+}
+
+/**
  * Safely handle OAuth state validation with multiple fallback mechanisms
  */
 export function validateOAuthState(receivedState, options = {}) {
@@ -50,36 +74,77 @@ export function validateOAuthState(receivedState, options = {}) {
   
   try {
     // Primary validation sources - use correct key 'bungie_oauth_state'
-    const localState = localStorage.getItem('bungie_oauth_state');
-    const sessionState = sessionStorage.getItem('bungie_oauth_state');
-    const cookieState = getCookieValue('bungie_oauth_state');
+    const localStateRaw = localStorage.getItem('bungie_oauth_state');
+    const sessionStateRaw = sessionStorage.getItem('bungie_oauth_state');
+    const cookieStateRaw = getCookieValue('bungie_oauth_state');
     
-    // Validation logic with fallbacks
+    // Parse stored states
+    const localState = parseStoredState(localStateRaw);
+    const sessionState = parseStoredState(sessionStateRaw);
+    const cookieState = parseStoredState(cookieStateRaw);
+    
+    // Filter valid, non-expired states
+    const now = Date.now();
     const validationSources = [
-      { name: 'localStorage', value: localState },
-      { name: 'sessionStorage', value: sessionState },
-      { name: 'cookie', value: cookieState }
-    ].filter(source => source.value);
+      { name: 'localStorage', data: localState },
+      { name: 'sessionStorage', data: sessionState },
+      { name: 'cookie', data: cookieState }
+    ].filter(source => {
+      if (!source.data) return false;
+      
+      // Check if state has expired
+      if (source.data.expires && now > source.data.expires) {
+        logger.warn(`OAuth state expired in ${source.name}`, {
+          expired: new Date(source.data.expires).toISOString(),
+          now: new Date(now).toISOString()
+        });
+        return false;
+      }
+      
+      return true;
+    });
     
     if (!receivedState) {
       throw new GuardianError(
         'No state parameter received from OAuth provider',
         ERROR_CODES.OAUTH_STATE_VALIDATION_FAILED,
-        { validationSources: validationSources.map(s => s.name) }
+        { 
+          validationSources: validationSources.map(s => s.name),
+          hasStoredStates: validationSources.length > 0
+        }
       );
     }
     
     if (validationSources.length === 0) {
+      // Check if we had states but they were expired
+      const expiredStates = [localState, sessionState, cookieState]
+        .filter(state => state && state.expires && now > state.expires);
+      
+      if (expiredStates.length > 0) {
+        throw new GuardianError(
+          'OAuth state has expired. Please try connecting again.',
+          ERROR_CODES.OAUTH_STATE_VALIDATION_FAILED,
+          { 
+            receivedState: receivedState.slice(0, 8) + '...',
+            reason: 'expired_states',
+            expiredCount: expiredStates.length
+          }
+        );
+      }
+      
       throw new GuardianError(
         'No stored state found for validation',
         ERROR_CODES.STATE_RETRIEVAL_ERROR,
-        { receivedState: receivedState.slice(0, 8) + '...' }
+        { 
+          receivedState: receivedState.slice(0, 8) + '...',
+          reason: 'no_stored_states'
+        }
       );
     }
     
     // Try to match against any available stored state
     const matchingSource = validationSources.find(source => 
-      source.value === receivedState
+      source.data.state === receivedState
     );
     
     if (!matchingSource) {
@@ -90,6 +155,7 @@ export function validateOAuthState(receivedState, options = {}) {
           {
             receivedState: receivedState.slice(0, 8) + '...',
             availableSources: validationSources.map(s => s.name),
+            availableStates: validationSources.map(s => s.data.state.slice(0, 8) + '...'),
             strictMode: true
           }
         );
@@ -109,7 +175,8 @@ export function validateOAuthState(receivedState, options = {}) {
     return {
       isValid: !!matchingSource || !strictMode,
       matchedSource: matchingSource?.name || 'none',
-      validationSources: validationSources.map(s => s.name)
+      validationSources: validationSources.map(s => s.name),
+      stateAge: matchingSource ? now - matchingSource.data.timestamp : null
     };
     
   } catch (error) {
@@ -335,12 +402,55 @@ export function cleanupOAuthState() {
     localStorage.removeItem('bungie_oauth_state');
     sessionStorage.removeItem('bungie_oauth_state');
     
-    // Remove cookie
+    // Remove cookie with all possible path variations
     document.cookie = 'bungie_oauth_state=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    document.cookie = 'bungie_oauth_state=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/auth;';
     
     logger.debug('OAuth state cleanup completed');
   } catch (error) {
     logger.warn('Failed to cleanup OAuth state', { error: error.message });
+  }
+}
+
+/**
+ * Proactively clean up expired OAuth states
+ */
+export function cleanupExpiredOAuthStates() {
+  try {
+    const now = Date.now();
+    const sources = [
+      { name: 'localStorage', key: 'bungie_oauth_state' },
+      { name: 'sessionStorage', key: 'bungie_oauth_state' }
+    ];
+    
+    sources.forEach(({ name, key }) => {
+      try {
+        const storage = name === 'localStorage' ? localStorage : sessionStorage;
+        const storedValue = storage.getItem(key);
+        
+        if (storedValue) {
+          const parsed = parseStoredState(storedValue);
+          if (parsed && parsed.expires && now > parsed.expires) {
+            storage.removeItem(key);
+            logger.debug(`Cleaned up expired OAuth state from ${name}`);
+          }
+        }
+      } catch (error) {
+        logger.warn(`Failed to check/cleanup expired state in ${name}`, { error: error.message });
+      }
+    });
+    
+    // Check and cleanup expired cookie
+    const cookieState = getCookieValue('bungie_oauth_state');
+    if (cookieState) {
+      const parsed = parseStoredState(cookieState);
+      if (parsed && parsed.expires && now > parsed.expires) {
+        document.cookie = 'bungie_oauth_state=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+        logger.debug('Cleaned up expired OAuth state from cookie');
+      }
+    }
+  } catch (error) {
+    logger.warn('Failed to cleanup expired OAuth states', { error: error.message });
   }
 }
 

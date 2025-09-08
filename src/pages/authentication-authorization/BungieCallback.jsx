@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import BungieAuthService from '../../services/bungieAuth';
 import Icon from '../../components/AppIcon';
 import logger from '../../utils/logger';
-import { formatUserError, GuardianError, setupGlobalErrorHandling } from '../../utils/errorHandler';
+import { formatUserError, GuardianError, setupGlobalErrorHandling, cleanupExpiredOAuthStates } from '../../utils/errorHandler';
 
 const BungieCallback = () => {
   const [searchParams] = useSearchParams();
@@ -16,6 +16,9 @@ const BungieCallback = () => {
   useEffect(() => {
     // Setup global error handling
     setupGlobalErrorHandling();
+    
+    // Clean up any expired OAuth states first
+    cleanupExpiredOAuthStates();
     
     const processCallback = async () => {
       try {
@@ -146,6 +149,10 @@ const BungieCallback = () => {
         // Clear OAuth state if needed for fresh retry
         if (shouldClearState) {
           try {
+            // Use the proper cleanup function
+            cleanupExpiredOAuthStates();
+            
+            // Also clear any legacy OAuth state keys
             localStorage.removeItem('oauth_state');
             localStorage.removeItem('oauth_code_verifier');
             sessionStorage.removeItem('bungie_auth_redirect');

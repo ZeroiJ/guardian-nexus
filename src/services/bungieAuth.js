@@ -138,28 +138,60 @@ export class BungieAuthService {
         throw new Error('Failed to generate OAuth state');
       }
       
-      // Store state in both localStorage and sessionStorage for redundancy
-      localStorage.setItem('bungie_oauth_state', generatedState);
-      sessionStorage.setItem('bungie_oauth_state', generatedState);
+      // Clear any existing state first to prevent conflicts
+      localStorage.removeItem('bungie_oauth_state');
+      sessionStorage.removeItem('bungie_oauth_state');
+      document.cookie = 'bungie_oauth_state=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
       
-      // Also store in a cookie as backup (expires in 10 minutes)
-      document.cookie = `bungie_oauth_state=${generatedState}; max-age=600; path=/; SameSite=Lax`;
+      // Store state with timestamp for expiration checking (15 minutes)
+      const stateData = {
+        state: generatedState,
+        timestamp: Date.now(),
+        expires: Date.now() + (15 * 60 * 1000) // 15 minutes
+      };
+      
+      const stateString = JSON.stringify(stateData);
+      
+      // Store state in multiple locations for redundancy
+      localStorage.setItem('bungie_oauth_state', stateString);
+      sessionStorage.setItem('bungie_oauth_state', stateString);
+      
+      // Store in cookie with secure settings (expires in 15 minutes)
+      const isSecure = window.location.protocol === 'https:';
+      document.cookie = `bungie_oauth_state=${encodeURIComponent(stateString)}; max-age=900; path=/; SameSite=Lax${isSecure ? '; Secure' : ''}`;
     
-      // Enhanced debug logging
+      // Enhanced debug logging with new state format
       const storedStateLocal = localStorage.getItem('bungie_oauth_state');
       const storedStateSession = sessionStorage.getItem('bungie_oauth_state');
+      
+      // Verify state storage worked correctly
+      let localStateValid = false;
+      let sessionStateValid = false;
+      
+      try {
+        const localParsed = JSON.parse(storedStateLocal);
+        localStateValid = localParsed.state === generatedState;
+      } catch {
+        localStateValid = false;
+      }
+      
+      try {
+        const sessionParsed = JSON.parse(storedStateSession);
+        sessionStateValid = sessionParsed.state === generatedState;
+      } catch {
+        sessionStateValid = false;
+      }
+      
       console.log('OAuth Initiation Debug - Enhanced:', {
-        generatedState,
+        generatedState: generatedState.slice(0, 8) + '...',
         generatedStateLength: generatedState?.length,
-        storedStateLocal,
-        storedStateLocalLength: storedStateLocal?.length,
-        storedStateSession,
-        storedStateSessionLength: storedStateSession?.length,
-        localStorageWorking: storedStateLocal === generatedState,
-        sessionStorageWorking: storedStateSession === generatedState,
+        stateDataStored: !!storedStateLocal,
+        localStorageWorking: localStateValid,
+        sessionStorageWorking: sessionStateValid,
         currentOrigin: window.location.origin,
         redirectURI: BUNGIE_CONFIG.redirectURI,
         cookieSet: document.cookie.includes('bungie_oauth_state'),
+        expiresAt: new Date(stateData.expires).toISOString(),
         timestamp: new Date().toISOString()
       });
       
@@ -195,6 +227,41 @@ export class BungieAuthService {
     const parts = value.split(`; ${name}=`);
     if (parts.length === 2) return parts.pop().split(';').shift();
     return null;
+  }
+
+  /**
+   * Recovery method for OAuth state validation failures
+   * Cleans up all stored states and provides fresh start
+   */
+  static recoverFromStateValidationError() {
+    try {
+      // Import cleanup function
+      import('../../utils/errorHandler').then(({ cleanupOAuthState, cleanupExpiredOAuthStates }) => {
+        // Clean up all OAuth states
+        cleanupOAuthState();
+        cleanupExpiredOAuthStates();
+        
+        // Clear any additional OAuth-related storage
+        localStorage.removeItem('oauth_state');
+        localStorage.removeItem('oauth_code_verifier');
+        sessionStorage.removeItem('bungie_auth_redirect');
+        
+        logger.info('OAuth state recovery completed - ready for fresh authentication');
+      });
+      
+      return {
+        success: true,
+        message: 'OAuth state cleared. You can now try connecting again.',
+        action: 'retry_authentication'
+      };
+    } catch (error) {
+      logger.error('Failed to recover from OAuth state error', { error: error.message });
+      return {
+        success: false,
+        message: 'Recovery failed. Please refresh the page and try again.',
+        error: error.message
+      };
+    }
   }
 
   /**
