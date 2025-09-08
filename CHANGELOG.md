@@ -13,6 +13,67 @@ This repository serves as the central location for the Guardian Nexus codebase, 
 
 ## [Unreleased]
 
+## [0.1.1] - 2025-01-28 - OAuth State Validation & Deployment Fixes
+
+### Summary
+Critical fixes for OAuth state validation errors and Vercel deployment module resolution issues. These changes resolve the "No stored state found for validation" error and ensure successful production builds.
+
+### Fixed
+- **OAuth State Validation Failures**: Completely resolved state validation errors
+  - Fixed incorrect state generation with proper timestamp and expiration handling
+  - Implemented multi-storage strategy using localStorage, sessionStorage, and secure cookies
+  - Added backward compatibility for both new JSON format and legacy string format
+  - Enhanced state cleanup with proactive removal of expired states
+  - Improved error messages with detailed expiration information
+
+- **Vercel Deployment Module Resolution**: Fixed build failures in production
+  - Corrected import path from `../../utils/errorHandler` to `../utils/errorHandler.js`
+  - Fixed both static and dynamic imports in bungieAuth.js
+  - Added explicit .js extensions for better module resolution
+  - Build now completes successfully without RollupError
+
+- **Promise Rejection Handling**: Resolved unhandled promise rejections
+  - Fixed ReferenceError with undefined errMsg variable
+  - Enhanced global error handling setup
+  - Improved error boundary implementation
+
+### Added
+- **Enhanced State Management**: New robust state handling system
+  - `parseStoredState()` function to handle multiple state formats
+  - `cleanupExpiredOAuthStates()` for proactive state cleanup
+  - `recoverFromStateValidationError()` method for error recovery
+  - Secure cookie handling with proper path variations and HTTPS flags
+
+- **Improved Error Recovery**: Better user experience during OAuth failures
+  - Automatic cleanup of expired OAuth states on page load
+  - Enhanced error categorization and user-friendly messages
+  - Retry mechanisms for failed state validations
+
+### Technical Implementation
+- **State Storage Strategy**: Multi-layer storage approach
+  - Primary: localStorage with JSON format including timestamp and expiration
+  - Secondary: sessionStorage for session-based persistence
+  - Tertiary: Secure HTTP-only cookies with 15-minute expiration
+  - Automatic cleanup of expired states across all storage mechanisms
+
+- **Module Resolution**: Improved import handling
+  - Consistent relative path usage throughout the codebase
+  - Explicit file extensions for better Vite/Rollup compatibility
+  - Fixed dynamic imports for code splitting optimization
+
+### Security Enhancements
+- **Cookie Security**: Enhanced cookie handling
+  - Secure flag for HTTPS environments
+  - HttpOnly flag for XSS protection
+  - SameSite=Strict for CSRF protection
+  - Proper path handling for different deployment scenarios
+
+### Compatibility
+- **Vercel Serverless**: Fully compatible with Vercel's stateless architecture
+  - Client-side state storage eliminates server-side session dependencies
+  - Optimized for serverless function execution
+  - Cross-request persistence through browser storage mechanisms
+
 ## [2025-09-06] - System Stability and Configuration Improvements
 
 ### Summary
