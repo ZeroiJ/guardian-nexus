@@ -1,6 +1,6 @@
 import { encryptToken, decryptToken, isTokenEncrypted } from '../utils/tokenSecurity';
 import logger from '../utils/logger';
-import { validateOAuthState, safeFetch, cleanupOAuthState, GuardianError, ERROR_CODES } from '../utils/errorHandler';
+import { validateOAuthState, safeFetch, cleanupOAuthState, GuardianError, ERROR_CODES } from '../utils/errorHandler.js';
 
 // Bungie API Configuration
 const BUNGIE_CONFIG = {
@@ -236,7 +236,7 @@ export class BungieAuthService {
   static recoverFromStateValidationError() {
     try {
       // Import cleanup function
-      import('../../utils/errorHandler').then(({ cleanupOAuthState, cleanupExpiredOAuthStates }) => {
+      import('../utils/errorHandler.js').then(({ cleanupOAuthState, cleanupExpiredOAuthStates }) => {
         // Clean up all OAuth states
         cleanupOAuthState();
         cleanupExpiredOAuthStates();
