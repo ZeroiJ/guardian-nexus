@@ -13,6 +13,52 @@ This repository serves as the central location for the Guardian Nexus codebase, 
 
 ## [Unreleased]
 
+## [0.1.2] - 2025-01-28 - Vercel Deployment Configuration Fixes
+
+### Summary
+Resolved multiple Vercel deployment configuration issues including environment variable setup, build output directory configuration, and SPA routing for OAuth callbacks. These fixes ensure successful deployment and proper functionality of the OAuth authentication flow in production.
+
+### Fixed
+- **Environment Variable Configuration**: Resolved deployment failure due to non-existent Vercel secrets
+  - Updated `vercel.json` to use standard environment variables instead of Vercel secrets format
+  - Changed from `@bungie-api-key` format to `$BUNGIE_API_KEY` format for all environment variables
+  - Fixed `BUNGIE_API_KEY`, `BUNGIE_CLIENT_ID`, `BUNGIE_CLIENT_SECRET`, and `BUNGIE_OAUTH_REDIRECT_URI` references
+  - Deployment now properly reads environment variables from Vercel project settings
+
+- **Build Output Directory Mismatch**: Fixed "No Output Directory named 'dist' found" error
+  - Added `"buildCommand": "npm run build"` to vercel.json configuration
+  - Added `"outputDirectory": "build"` to match Vite's configured output directory
+  - Aligned Vercel deployment with Vite build configuration (`outDir: "build"`)
+  - Resolved build process failure and enabled successful deployment
+
+- **OAuth Callback 404 Error**: Resolved SPA routing issue for authentication callbacks
+  - Added SPA fallback rewrite rule `"/((?!api).*)" -> "/index.html"` to vercel.json
+  - Ensures all non-API routes are properly handled by React Router in production
+  - Fixed OAuth callback URL returning 404 instead of serving the React application
+  - Maintained serverless function routing for `/api/*` endpoints while enabling client-side routing
+
+### Technical Implementation
+- **Vercel Configuration**: Comprehensive vercel.json updates
+  - Environment variables now use standard Vercel format (`$VARIABLE_NAME`)
+  - Build configuration properly specifies npm build command and output directory
+  - SPA fallback routing excludes API routes using regex pattern `/((?!api).*)`
+  - Preserves existing serverless function configuration and CORS headers
+
+- **Build Process**: Aligned frontend and deployment configurations
+  - Vite configuration uses `outDir: "build"` in vite.config.mjs
+  - Vercel deployment now correctly looks for build output in `build/` directory
+  - Build command explicitly specified to ensure consistent build process
+
+### Development Status
+- ✅ **Environment Variables**: Deployment configuration updated and functional
+- ✅ **Build Output**: Correct directory configuration resolves deployment errors
+- ✅ **OAuth Routing**: SPA fallback enables proper authentication flow
+- ✅ **Production Deployment**: All configuration issues resolved for successful deployment
+
+### Files Modified
+- `vercel.json` - Updated environment variables, build configuration, and SPA routing
+- All changes committed and pushed to GitHub for automatic Vercel redeployment
+
 ## [0.1.1] - 2025-01-28 - OAuth State Validation & Deployment Fixes
 
 ### Summary
