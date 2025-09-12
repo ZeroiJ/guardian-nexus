@@ -57,6 +57,10 @@
     {
       "source": "/api/destiny2/manifest",
       "destination": "/api/destiny2/manifest.js"
+    },
+    {
+      "source": "/((?!api).*)",
+      "destination": "/index.html"
     }
   ]
 }
