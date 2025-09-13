@@ -43,6 +43,10 @@
       "destination": "/api/auth/token.js"
     },
     {
+      "source": "/api/bungie/oauth/token",
+      "destination": "/api/auth/token.js"
+    },
+    {
       "source": "/api/auth/memberships",
       "destination": "/api/auth/memberships.js"
     },
