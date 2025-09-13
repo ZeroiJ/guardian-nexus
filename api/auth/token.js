@@ -15,12 +15,24 @@ const { withErrorHandler, createValidationError } = require('../utils/error-hand
 async function exchangeCodeForToken(code, redirectUri) {
   const tokenUrl = 'https://www.bungie.net/platform/app/oauth/token/';
   
+  // Validate client credentials before making request
+  const clientId = process.env.BUNGIE_CLIENT_ID;
+  const clientSecret = process.env.BUNGIE_CLIENT_SECRET;
+  
+  if (!clientId || clientId.trim() === '') {
+    throw new Error('BUNGIE_CLIENT_ID is not properly configured');
+  }
+  
+  if (!clientSecret || clientSecret.trim() === '') {
+    throw new Error('BUNGIE_CLIENT_SECRET is not properly configured');
+  }
+  
   const tokenData = {
     grant_type: 'authorization_code',
     code: code,
     redirect_uri: redirectUri,
-    client_id: process.env.BUNGIE_CLIENT_ID,
-    client_secret: process.env.BUNGIE_CLIENT_SECRET
+    client_id: clientId.trim(),
+    client_secret: clientSecret.trim()
   };
 
   const response = await fetch(tokenUrl, {
@@ -48,11 +60,23 @@ async function exchangeCodeForToken(code, redirectUri) {
 async function refreshAccessToken(refreshToken) {
   const tokenUrl = 'https://www.bungie.net/platform/app/oauth/token/';
   
+  // Validate client credentials before making request
+  const clientId = process.env.BUNGIE_CLIENT_ID;
+  const clientSecret = process.env.BUNGIE_CLIENT_SECRET;
+  
+  if (!clientId || clientId.trim() === '') {
+    throw new Error('BUNGIE_CLIENT_ID is not properly configured');
+  }
+  
+  if (!clientSecret || clientSecret.trim() === '') {
+    throw new Error('BUNGIE_CLIENT_SECRET is not properly configured');
+  }
+  
   const tokenData = {
     grant_type: 'refresh_token',
     refresh_token: refreshToken,
-    client_id: process.env.BUNGIE_CLIENT_ID,
-    client_secret: process.env.BUNGIE_CLIENT_SECRET
+    client_id: clientId.trim(),
+    client_secret: clientSecret.trim()
   };
 
   const response = await fetch(tokenUrl, {
@@ -94,7 +118,18 @@ async function handler(req, res) {
   }
   
   // Validate environment variables
-  validateEnvironment();
+  const envValidation = validateEnvironment();
+  if (!envValidation.isValid) {
+    throw createValidationError(
+      `Missing required environment variables: ${envValidation.missing.join(', ')}`,
+      { missingVariables: envValidation.missing }
+    );
+  }
+  
+  // Additional client_id validation
+  if (!process.env.BUNGIE_CLIENT_ID || process.env.BUNGIE_CLIENT_ID.trim() === '') {
+    throw createValidationError('BUNGIE_CLIENT_ID is not properly configured');
+  }
   
   // Parse request body
   const { code, refresh_token, redirect_uri, grant_type } = req.body;
