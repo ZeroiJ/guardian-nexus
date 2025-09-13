@@ -3,7 +3,7 @@
  * Handles Bungie OAuth authorization code exchange for access tokens
  */
 
-const { setupCORS, validateEnvironment, createSuccessResponse } = require('../utils/bungie-client');
+const { applyCorsHeaders, handleCorsPrelight, validateEnvironment, createSuccessResponse } = require('../utils/bungie-client');
 const { withErrorHandler, createValidationError } = require('../utils/error-handler');
 
 /**
@@ -80,11 +80,12 @@ async function refreshAccessToken(refreshToken) {
  */
 async function handler(req, res) {
   // Setup CORS
-  setupCORS(res);
+  applyCorsHeaders(res);
   
   // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+  const corsResponse = handleCorsPrelight(req, res);
+  if (corsResponse) {
+    return corsResponse;
   }
   
   // Only allow POST requests

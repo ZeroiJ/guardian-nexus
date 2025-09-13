@@ -3,7 +3,7 @@
  * Simple endpoint to verify serverless backend is working correctly
  */
 
-const { setupCORS, createSuccessResponse, validateEnvironment } = require('./utils/bungie-client');
+const { applyCorsHeaders, handleCorsPrelight, createSuccessResponse, validateEnvironment } = require('./utils/bungie-client');
 const { withErrorHandler } = require('./utils/error-handler');
 
 /**
@@ -14,11 +14,12 @@ const { withErrorHandler } = require('./utils/error-handler');
  */
 async function handler(req, res) {
   // Setup CORS
-  setupCORS(res);
+  applyCorsHeaders(res);
   
   // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+  const corsResponse = handleCorsPrelight(req, res);
+  if (corsResponse) {
+    return corsResponse;
   }
   
   // Only allow GET requests

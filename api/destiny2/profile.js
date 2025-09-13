@@ -3,7 +3,7 @@
  * Fetches comprehensive Destiny 2 profile data for authenticated users
  */
 
-const { setupCORS, makeBungieRequest, createSuccessResponse } = require('../utils/bungie-client');
+const { applyCorsHeaders, handleCorsPrelight, makeBungieRequest, createSuccessResponse } = require('../utils/bungie-client');
 const { requireMembership, getPrimaryMembership } = require('../utils/auth-middleware');
 const { withErrorHandler, createValidationError } = require('../utils/error-handler');
 
@@ -227,11 +227,12 @@ function getGenderName(genderType) {
  */
 async function handler(req, res, auth) {
   // Setup CORS
-  setupCORS(res);
+  applyCorsHeaders(res);
   
   // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+  const corsResponse = handleCorsPrelight(req, res);
+  if (corsResponse) {
+    return corsResponse;
   }
   
   // Only allow GET requests

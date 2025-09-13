@@ -3,7 +3,7 @@
  * Handles manifest data retrieval and item definition lookups
  */
 
-const { setupCORS, makeBungieRequest, createSuccessResponse, validateEnvironment } = require('../utils/bungie-client');
+const { applyCorsHeaders, handleCorsPrelight, makeBungieRequest, createSuccessResponse, validateEnvironment } = require('../utils/bungie-client');
 const { withErrorHandler, createValidationError } = require('../utils/error-handler');
 
 /**
@@ -176,11 +176,12 @@ async function getBatchEntityDefinitions(entityType, hashIds, language = 'en') {
  */
 async function handler(req, res) {
   // Setup CORS
-  setupCORS(res);
+  applyCorsHeaders(res);
   
   // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+  const corsResponse = handleCorsPrelight(req, res);
+  if (corsResponse) {
+    return corsResponse;
   }
   
   // Only allow GET requests

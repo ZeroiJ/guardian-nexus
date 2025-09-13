@@ -3,7 +3,7 @@
  * Fetches detailed character data, equipment, and inventory for specific characters
  */
 
-const { setupCORS, makeBungieRequest, createSuccessResponse } = require('../utils/bungie-client');
+const { applyCorsHeaders, handleCorsPrelight, makeBungieRequest, createSuccessResponse } = require('../utils/bungie-client');
 const { requireMembership } = require('../utils/auth-middleware');
 const { withErrorHandler, createValidationError } = require('../utils/error-handler');
 const { PROFILE_COMPONENTS } = require('./profile');
@@ -255,11 +255,12 @@ function getGenderName(genderType) {
  */
 async function handler(req, res, auth) {
   // Setup CORS
-  setupCORS(res);
+  applyCorsHeaders(res);
   
   // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+  const corsResponse = handleCorsPrelight(req, res);
+  if (corsResponse) {
+    return corsResponse;
   }
   
   // Only allow GET requests
