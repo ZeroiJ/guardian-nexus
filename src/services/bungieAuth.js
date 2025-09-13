@@ -456,7 +456,8 @@ export class BungieAuthService {
       const requestPayload = {
         grant_type: 'authorization_code',
         code: trimmedCode,
-        redirect_uri: BUNGIE_CONFIG.redirectURI
+        redirect_uri: BUNGIE_CONFIG.redirectURI,
+        client_id: BUNGIE_CONFIG.clientId
       };
 
       const response = await apiClient.post('/bungie/oauth/token', requestPayload);
@@ -667,7 +668,8 @@ export class BungieAuthService {
 
         const requestPayload = {
           grant_type: 'refresh_token',
-          refresh_token: decryptedRefreshToken
+          refresh_token: decryptedRefreshToken,
+          client_id: BUNGIE_CONFIG.clientId
         };
 
         const response = await apiClient.post('/bungie/oauth/token', requestPayload);
