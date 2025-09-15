@@ -49,18 +49,27 @@ function parseStoredState(storedValue) {
   if (!storedValue) return null;
   
   try {
-    // Try to parse as JSON (new format with timestamp)
-    const parsed = JSON.parse(decodeURIComponent(storedValue));
+    // First try to parse as JSON directly (for localStorage/sessionStorage)
+    const parsed = JSON.parse(storedValue);
     if (parsed.state && parsed.timestamp && parsed.expires) {
       return parsed;
     }
   } catch {
-    // If parsing fails, treat as old format (plain state string)
-    return {
-      state: storedValue,
-      timestamp: Date.now() - (5 * 60 * 1000), // Assume 5 minutes old
-      expires: Date.now() + (10 * 60 * 1000) // Give 10 more minutes
-    };
+    // If that fails, try with URL decoding (for cookies)
+    try {
+      const decoded = decodeURIComponent(storedValue);
+      const parsed = JSON.parse(decoded);
+      if (parsed.state && parsed.timestamp && parsed.expires) {
+        return parsed;
+      }
+    } catch {
+      // If both fail, treat as old format (plain state string)
+      return {
+        state: storedValue,
+        timestamp: Date.now() - (5 * 60 * 1000), // Assume 5 minutes old
+        expires: Date.now() + (10 * 60 * 1000) // Give 10 more minutes
+      };
+    }
   }
   
   return null;
@@ -455,14 +464,15 @@ export function cleanupExpiredOAuthStates() {
 }
 
 /**
- * Get cookie value by name
+ * Get cookie value by name with proper URL decoding
  */
 function getCookieValue(name) {
   try {
     const value = `; ${document.cookie}`;
     const parts = value.split(`; ${name}=`);
     if (parts.length === 2) {
-      return parts.pop().split(';').shift();
+      const cookieValue = parts.pop().split(';').shift();
+      return decodeURIComponent(cookieValue);
     }
     return null;
   } catch (error) {

@@ -152,13 +152,20 @@ export class BungieAuthService {
       
       const stateString = JSON.stringify(stateData);
       
+      console.log('Storing OAuth state:', {
+        generatedState: generatedState.slice(0, 8) + '...',
+        stateData,
+        stateString: stateString.slice(0, 50) + '...'
+      });
+      
       // Store state in multiple locations for redundancy
       localStorage.setItem('bungie_oauth_state', stateString);
       sessionStorage.setItem('bungie_oauth_state', stateString);
       
-      // Store in cookie with secure settings (expires in 15 minutes)
+      // Store in cookie with secure settings (expires in 15 minutes) - double encode for cookie
       const isSecure = window.location.protocol === 'https:';
-      document.cookie = `bungie_oauth_state=${encodeURIComponent(stateString)}; max-age=900; path=/; SameSite=Lax${isSecure ? '; Secure' : ''}`;
+      const cookieValue = encodeURIComponent(stateString);
+      document.cookie = `bungie_oauth_state=${cookieValue}; max-age=900; path=/; SameSite=Lax${isSecure ? '; Secure' : ''}`;
     
       // Enhanced debug logging with new state format
       const storedStateLocal = localStorage.getItem('bungie_oauth_state');
@@ -219,14 +226,22 @@ export class BungieAuthService {
   }
 
   /**
-   * Helper function to get cookie value by name
+   * Helper function to get cookie value by name with proper decoding
    * @private
    */
   static getCookie(name) {
-    const value = `; ${document.cookie}`;
-    const parts = value.split(`; ${name}=`);
-    if (parts.length === 2) return parts.pop().split(';').shift();
-    return null;
+    try {
+      const value = `; ${document.cookie}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) {
+        const cookieValue = parts.pop().split(';').shift();
+        return decodeURIComponent(cookieValue);
+      }
+      return null;
+    } catch (error) {
+      console.warn('Failed to get cookie:', name, error);
+      return null;
+    }
   }
 
   /**
@@ -323,27 +338,60 @@ export class BungieAuthService {
       const storedStateSession = sessionStorage.getItem('bungie_oauth_state');
       const storedStateCookie = this.getCookie('bungie_oauth_state');
       
+      // Parse stored states to extract actual state values
+      let localStateValue = null;
+      let sessionStateValue = null;
+      let cookieStateValue = null;
+      
+      try {
+        if (storedStateLocal) {
+          const parsed = JSON.parse(storedStateLocal);
+          localStateValue = parsed.state;
+        }
+      } catch (e) {
+        // Fallback for old format
+        localStateValue = storedStateLocal;
+      }
+      
+      try {
+        if (storedStateSession) {
+          const parsed = JSON.parse(storedStateSession);
+          sessionStateValue = parsed.state;
+        }
+      } catch (e) {
+        // Fallback for old format
+        sessionStateValue = storedStateSession;
+      }
+      
+      try {
+        if (storedStateCookie) {
+          const parsed = JSON.parse(storedStateCookie);
+          cookieStateValue = parsed.state;
+        }
+      } catch (e) {
+        // Fallback for old format
+        cookieStateValue = storedStateCookie;
+      }
+      
       // Enhanced debugging with more details
       console.log('OAuth Callback Debug - Full Details:', {
         receivedState: state,
-        receivedStateType: typeof state,
         receivedStateLength: state?.length,
-        storedStateLocal,
-        storedStateLocalType: typeof storedStateLocal,
-        storedStateLocalLength: storedStateLocal?.length,
-        storedStateSession,
-        storedStateSessionType: typeof storedStateSession,
-        storedStateSessionLength: storedStateSession?.length,
-        storedStateCookie,
-        storedStateCookieType: typeof storedStateCookie,
-        storedStateCookieLength: storedStateCookie?.length,
-        localMatch: state === storedStateLocal,
-        sessionMatch: state === storedStateSession,
-        cookieMatch: state === storedStateCookie,
+        storedStateLocal: storedStateLocal?.slice(0, 100) + '...',
+        storedStateSession: storedStateSession?.slice(0, 100) + '...',
+        storedStateCookie: storedStateCookie?.slice(0, 100) + '...',
+        extractedStates: {
+          local: localStateValue?.slice(0, 8) + '...',
+          session: sessionStateValue?.slice(0, 8) + '...',
+          cookie: cookieStateValue?.slice(0, 8) + '...'
+        },
+        matches: {
+          local: state === localStateValue,
+          session: state === sessionStateValue,
+          cookie: state === cookieStateValue
+        },
         currentURL: window.location.href,
-        currentOrigin: window.location.origin,
-        redirectURI: BUNGIE_CONFIG.redirectURI,
-        allCookies: document.cookie
+        redirectURI: BUNGIE_CONFIG.redirectURI
       });
       
       // Enhanced state validation using the new error handler
