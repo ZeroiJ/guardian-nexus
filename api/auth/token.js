@@ -38,6 +38,7 @@ async function exchangeCodeForToken(code, redirectUri) {
   const tokenData = {
     grant_type: "authorization_code",
     code: code,
+    client_id: clientId,
     redirect_uri: redirectUri,
   };
 
@@ -96,6 +97,7 @@ async function refreshAccessToken(refreshToken) {
   const tokenData = {
     grant_type: "refresh_token",
     refresh_token: refreshToken,
+    client_id: clientId,
   };
 
   const authHeader = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`;

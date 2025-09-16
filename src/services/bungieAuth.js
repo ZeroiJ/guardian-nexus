@@ -190,29 +190,14 @@ export class BungieAuthService {
         stateString: stateString.slice(0, 50) + "...",
       });
 
-      // Store state in multiple locations for redundancy
-      localStorage.setItem("bungie_oauth_state", stateString);
+      // Store state in sessionStorage
       sessionStorage.setItem("bungie_oauth_state", stateString);
 
-      // Store in cookie with secure settings (expires in 15 minutes) - double encode for cookie
-      const isSecure = window.location.protocol === "https:";
-      const cookieValue = encodeURIComponent(stateString);
-      document.cookie = `bungie_oauth_state=${cookieValue}; max-age=900; path=/; SameSite=Lax${isSecure ? "; Secure" : ""}`;
-
       // Enhanced debug logging with new state format
-      const storedStateLocal = localStorage.getItem("bungie_oauth_state");
       const storedStateSession = sessionStorage.getItem("bungie_oauth_state");
 
       // Verify state storage worked correctly
-      let localStateValid = false;
       let sessionStateValid = false;
-
-      try {
-        const localParsed = JSON.parse(storedStateLocal);
-        localStateValid = localParsed.state === generatedState;
-      } catch {
-        localStateValid = false;
-      }
 
       try {
         const sessionParsed = JSON.parse(storedStateSession);
@@ -224,12 +209,9 @@ export class BungieAuthService {
       console.log("OAuth Initiation Debug - Enhanced:", {
         generatedState: generatedState.slice(0, 8) + "...",
         generatedStateLength: generatedState?.length,
-        stateDataStored: !!storedStateLocal,
-        localStorageWorking: localStateValid,
         sessionStorageWorking: sessionStateValid,
         currentOrigin: window.location.origin,
         redirectURI: BUNGIE_CONFIG.redirectURI,
-        cookieSet: document.cookie.includes("bungie_oauth_state"),
         expiresAt: new Date(stateData.expires).toISOString(),
         timestamp: new Date().toISOString(),
       });
@@ -384,25 +366,11 @@ export class BungieAuthService {
    */
   static async handleOAuthCallback(code, state) {
     try {
-      // Verify state parameter - check multiple storage locations
-      const storedStateLocal = localStorage.getItem("bungie_oauth_state");
+      // Verify state parameter - check sessionStorage
       const storedStateSession = sessionStorage.getItem("bungie_oauth_state");
-      const storedStateCookie = this.getCookie("bungie_oauth_state");
 
       // Parse stored states to extract actual state values
-      let localStateValue = null;
       let sessionStateValue = null;
-      let cookieStateValue = null;
-
-      try {
-        if (storedStateLocal) {
-          const parsed = JSON.parse(storedStateLocal);
-          localStateValue = parsed.state;
-        }
-      } catch (e) {
-        // Fallback for old format
-        localStateValue = storedStateLocal;
-      }
 
       try {
         if (storedStateSession) {
@@ -414,32 +382,16 @@ export class BungieAuthService {
         sessionStateValue = storedStateSession;
       }
 
-      try {
-        if (storedStateCookie) {
-          const parsed = JSON.parse(storedStateCookie);
-          cookieStateValue = parsed.state;
-        }
-      } catch (e) {
-        // Fallback for old format
-        cookieStateValue = storedStateCookie;
-      }
-
       // Enhanced debugging with more details
       console.log("OAuth Callback Debug - Full Details:", {
         receivedState: state,
         receivedStateLength: state?.length,
-        storedStateLocal: storedStateLocal?.slice(0, 100) + "...",
         storedStateSession: storedStateSession?.slice(0, 100) + "...",
-        storedStateCookie: storedStateCookie?.slice(0, 100) + "...",
         extractedStates: {
-          local: localStateValue?.slice(0, 8) + "...",
           session: sessionStateValue?.slice(0, 8) + "...",
-          cookie: cookieStateValue?.slice(0, 8) + "...",
         },
         matches: {
-          local: state === localStateValue,
           session: state === sessionStateValue,
-          cookie: state === cookieStateValue,
         },
         currentURL: window.location.href,
         redirectURI: BUNGIE_CONFIG.redirectURI,
@@ -450,8 +402,8 @@ export class BungieAuthService {
 
       try {
         const validationResult = validateOAuthState(receivedState, {
-          enableFallbacks: true,
-          strictMode: false, // Allow some flexibility in production
+          enableFallbacks: false, // Only check session storage
+          strictMode: true,
         });
 
         if (!validationResult.isValid) {
@@ -488,10 +440,7 @@ export class BungieAuthService {
       }
 
       // Clean up stored state from all locations
-      localStorage.removeItem("bungie_oauth_state");
       sessionStorage.removeItem("bungie_oauth_state");
-      document.cookie =
-        "bungie_oauth_state=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
 
       // Exchange code for tokens
       const tokenResponse = await this.exchangeCodeForTokens(code);
