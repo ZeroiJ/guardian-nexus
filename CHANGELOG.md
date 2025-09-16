@@ -13,6 +13,21 @@ This repository serves as the central location for the Guardian Nexus codebase, 
 
 ## [Unreleased]
 
+## [0.1.3] - 2025-09-16 - OAuth Token Exchange Fix & Enhanced Debugging
+
+### Summary
+Fixed a critical `400 Bad Request` error during the Bungie OAuth token exchange by correcting the method for sending client credentials. Added extensive diagnostic logging to both client and server-side code to help debug persistent authentication issues like state validation failures.
+
+### Fixed
+- **Bungie API Token Exchange**: Resolved `400 Bad Request` error by correctly sending the `client_id` and `client_secret` in a `Basic` Authorization header, as required by the Bungie API, instead of in the request body. This affects both the authorization code exchange and the token refresh process in `api/auth/token.js`.
+
+### Added
+- **Diagnostic Logging**:
+  - Added server-side logging in `api/auth/token.js` to output the exact request being sent to Bungie and any error responses received.
+  - Added client-side logging in `src/services/bungieAuth.js` to print the full, generated Bungie authorization URL to the console before redirecting the user, helping to verify `redirect_uri` and `state` parameters.
+
+
+
 ## [0.1.2] - 2025-01-28 - Vercel Deployment Configuration Fixes
 
 ### Summary
